@@ -16,6 +16,7 @@
 
 import os
 import subprocess
+import tempfile
 import unittest
 from . import nsjail
 
@@ -43,6 +44,7 @@ class NsjailTest(unittest.TestCase):
             '--', '/bin/bash'
         ]
     )
+
   def testSetBadMetaAndroidDir(self):
     os.chdir('/')
     with self.assertRaises(ValueError):
@@ -55,6 +57,22 @@ class NsjailTest(unittest.TestCase):
         dry_run=True,
         meta_root_dir='/meta/dir',
         meta_android_dir='/android/dir')
+
+  def testRedirectStdout(self):
+    with tempfile.TemporaryFile('w+t') as out:
+      nsjail.run(
+          nsjail_bin='/bin/echo',
+          chroot='/chroot',
+          source_dir='/source_dir',
+          command=['/bin/bash'],
+          android_target='target_name',
+          stdout=out)
+      out.seek(0)
+      stdout = out.read()
+      args = ('--env USER=android-build --config /nsjail.cfg '
+              '--bindmount /source_dir:/src -- /bin/bash')
+      expected = '\n'.join([args, 'NsJail command:', '/bin/echo '+args])+'\n'
+      self.assertEqual(stdout, expected)
 
   def testFailingJailedCommand(self):
     with self.assertRaises(subprocess.CalledProcessError):
@@ -76,14 +94,14 @@ class NsjailTest(unittest.TestCase):
         dry_run=True)
     self.assertEqual(
         commands,
-        [   
+        [
             '/bin/true',
             '--env', 'USER=android-build',
             '--config', '/nsjail.cfg',
             '--env', 'DIST_DIR=/dist',
             '--bindmount', '/source_dir:/src',
             '--bindmount', '/dist_dir:/dist',
-            '--', '/bin/bash'   
+            '--', '/bin/bash'
         ]
     )
 
@@ -128,6 +146,30 @@ class NsjailTest(unittest.TestCase):
             '--', '/bin/bash'
         ]
     )
+
+  def testEnv(self):
+    commands = nsjail.run(
+        nsjail_bin='/bin/true',
+        chroot='/chroot',
+        source_dir='/source_dir',
+        command=['/bin/bash'],
+        android_target='target_name',
+        max_cpus=1,
+        dry_run=True,
+        env=['foo=bar', 'spam=eggs'])
+    self.assertEqual(
+        commands,
+        [
+            '/bin/true',
+            '--env', 'USER=android-build',
+            '--config', '/nsjail.cfg',
+            '--max_cpus=1',
+            '--bindmount', '/source_dir:/src',
+            '--env', 'foo=bar', '--env', 'spam=eggs',
+            '--', '/bin/bash'
+        ]
+    )
+
 
 if __name__ == '__main__':
   unittest.main()

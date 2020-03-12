@@ -63,7 +63,10 @@ def run(command,
         readonly_bind_mounts=[],
         extra_nsjail_args=[],
         dry_run=False,
-        quiet=False):
+        quiet=False,
+        env=[],
+        stdout=None,
+        stderr=None):
   """Run inside an NsJail sandbox.
 
   Args:
@@ -86,12 +89,18 @@ def run(command,
     mount_local_device: Whether to mount /dev/usb (and related) trees enabling
       adb to run inside the jail
     max_cpus: An integer with maximum number of CPUs.
-    extra_bind_mounts: An array of extra mounts in the 'source' or 'source:dest' syntax
-    readonly_bind_mounts: An array of read only mounts in the 'source' or 'source:dest' syntax
+    extra_bind_mounts: An array of extra mounts in the 'source' or 'source:dest' syntax.
+    readonly_bind_mounts: An array of read only mounts in the 'source' or 'source:dest' syntax.
     extra_nsjail_args: A list of strings that contain extra arguments to nsjail.
     dry_run: If true, the command will be returned but not executed
     quiet: If true, the function will not display the command and
       will pass -quiet argument to nsjail
+    env: An array of environment variables to define in the jail in the `var=val` syntax.
+    stdout: the standard output for all printed messages. Valid values are None, a file
+      descriptor or file object. A None value means sys.stdout is used.
+    stderr: the standard error for all printed messages. Valid values are None, a file
+      descriptor or file object, and subprocess.STDOUT (which indicates that all stderr
+      should be redirected to stdout). A None value means sys.stderr is used.
 
   Returns:
     A list of strings with the command executed.
@@ -121,9 +130,11 @@ def run(command,
   if source_dir:
     source_dir = os.path.abspath(source_dir)
 
-  nsjail_bin = os.path.join(source_dir, nsjail_bin)
+  if nsjail_bin:
+    nsjail_bin = os.path.join(source_dir, nsjail_bin)
 
-  chroot = os.path.join(source_dir, chroot)
+  if chroot:
+    chroot = os.path.join(source_dir, chroot)
 
   if meta_root_dir:
     if not meta_android_dir or os.path.isabs(meta_android_dir):
@@ -136,13 +147,14 @@ def run(command,
 
   # By mounting the points individually that we need we reduce exposure and
   # keep the chroot clean from artifacts
-  for mpoints in _CHROOT_MOUNT_POINTS:
-    source = os.path.join(chroot, mpoints)
-    dest = os.path.join('/', mpoints)
-    if os.path.exists(source):
-      nsjail_command.extend([
-        '--bindmount_ro', '%s:%s' % (source, dest)
-      ])
+  if chroot:
+    for mpoints in _CHROOT_MOUNT_POINTS:
+      source = os.path.join(chroot, mpoints)
+      dest = os.path.join('/', mpoints)
+      if os.path.exists(source):
+        nsjail_command.extend([
+          '--bindmount_ro', '%s:%s' % (source, dest)
+        ])
 
   if build_id:
     nsjail_command.extend(['--env', 'BUILD_NUMBER=%s' % build_id])
@@ -206,13 +218,12 @@ def run(command,
     nsjail_command.extend(['--bindmount', '/sys/devices'])
 
   for mount in extra_bind_mounts:
-    nsjail_command.extend([
-        '--bindmount', mount
-    ])
+    nsjail_command.extend(['--bindmount', mount])
   for mount in readonly_bind_mounts:
-    nsjail_command.extend([
-        '--bindmount_ro', mount
-    ])
+    nsjail_command.extend(['--bindmount_ro', mount])
+
+  for var in env:
+    nsjail_command.extend(['--env', var])
 
   nsjail_command.extend(extra_nsjail_args)
 
@@ -220,11 +231,11 @@ def run(command,
   nsjail_command.extend(command)
 
   if not quiet:
-    print('NsJail command:')
-    print(' '.join(nsjail_command))
+    print('NsJail command:', file=stdout)
+    print(' '.join(nsjail_command), file=stdout)
 
   if not dry_run:
-    subprocess.check_call(nsjail_command)
+    subprocess.check_call(nsjail_command, stdout=stdout, stderr=stderr)
 
   return nsjail_command
 
@@ -240,12 +251,13 @@ def parse_args():
       description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   parser.add_argument(
       '--nsjail_bin',
+      required=True,
       help='Path to NsJail binary.')
   parser.add_argument(
       '--chroot',
       help='Path to the chroot to be used for building the Android'
       'platform. This will be mounted as the root filesystem in the'
-      'NsJail sanbox.')
+      'NsJail sandbox.')
   parser.add_argument(
       '--overlay_config',
       help='Path to the overlay configuration file.')
@@ -277,7 +289,7 @@ def parse_args():
       action='append',
       default=[],
       help='Optional glob filter of directories to add to the whiteout. The '
-      'directories will not appear in the containter. '
+      'directories will not appear in the container. '
       'Can be specified multiple times.')
   parser.add_argument(
       '--command',
@@ -300,7 +312,7 @@ def parse_args():
   parser.add_argument(
       '--max_cpus',
       type=int,
-      help='Limit of concurrent CPU cores that the NsJail sanbox'
+      help='Limit of concurrent CPU cores that the NsJail sandbox'
       'can use. Defaults to unlimited.')
   parser.add_argument(
       '--bindmount',
@@ -331,6 +343,13 @@ def parse_args():
       'the container. WARNING: Using this flag will cause the adb server to be '
       'killed on the host machine. WARNING: Using this flag exposes parts of '
       'the host /sys/... file system. Use only when you need adb.')
+  parser.add_argument(
+      '--env', '-e',
+      type=str,
+      default=[],
+      action='append',
+      help='Specify an environment variable to the NSJail sandbox. Can be specified '
+      'muliple times. Syntax: var_name=value')
   return parser.parse_args()
 
 def run_with_args(args):
@@ -344,7 +363,7 @@ def run_with_args(args):
   Returns:
     A list of strings with the commands executed.
   """
-  commands = run(chroot=args.chroot,
+  run(chroot=args.chroot,
       nsjail_bin=args.nsjail_bin,
       overlay_config=args.overlay_config,
       source_dir=args.source_dir,
@@ -361,7 +380,8 @@ def run_with_args(args):
       extra_bind_mounts=args.bindmount,
       readonly_bind_mounts=args.bindmount_ro,
       dry_run=args.dry_run,
-      quiet=args.quiet)
+      quiet=args.quiet,
+      env=args.env)
 
 def main():
   run_with_args(parse_args())
