@@ -12,15 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Sample test."""
+"""Runs all tests in this project."""
 
 import unittest
+import os
+import sys
 
+def run():
+  start_dir = os.path.dirname(os.path.abspath(__file__))
+  loader = unittest.TestLoader()
+  suite = loader.discover(start_dir, pattern='*_test.py')
 
-class SampleTest(unittest.TestCase):
+  runner = unittest.TextTestRunner(verbosity=2)
+  result = runner.run(suite)
+  sys.exit(not result.wasSuccessful())
 
-  def testPass(self):
-    pass
 
 if __name__ == '__main__':
-  unittest.main()
+  run()

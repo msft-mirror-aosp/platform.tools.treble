@@ -1,4 +1,4 @@
-// Copyright (C) 2019 The Android Open Source Project
+// Copyright (C) 2020 The Android Open Source Project
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 // limitations under the License.
 
 python_defaults {
-    name: "treble_build_default",
+    name: "treble_split_default",
     pkg_path: "treble",
     version: {
         py2: {
@@ -23,19 +23,34 @@ python_defaults {
             enabled: true,
         },
     },
+    libs: [
+        "py-setuptools",
+    ],
+}
+
+python_binary_host {
+    name: "treble_manifest_split",
+    main: "manifest_split.py",
+    defaults: ["treble_split_default"],
+    srcs: [
+        "manifest_split.py",
+    ],
+    data: [
+        "default_config.xml",
+    ],
 }
 
 python_test_host {
-    name: "treble_build_test",
+    name: "treble_manifest_split_test",
     main: "test.py",
-    defaults: ["treble_build_default"],
+    defaults: ["treble_split_default"],
     srcs: [
-        "sandbox/nsjail.py",
-        "sandbox/nsjail_test.py",
-        "sandbox/overlay.py",
-        "sandbox/overlay_test.py",
+        "manifest_split.py",
+        "manifest_split_test.py",
         "test.py",
-        "sample_test.py",
+    ],
+    libs: [
+        "py-mock",
     ],
     test_config: "test.xml",
     test_suites: ["general-tests"],
