@@ -14,6 +14,7 @@
 """Test manifest split."""
 
 import hashlib
+import json
 import mock
 import os
 import subprocess
@@ -163,8 +164,10 @@ class ManifestSplitTest(unittest.TestCase):
         '/tmp/absolute/path/file.java',
     ]
     self.assertEqual(
-        manifest_split.get_input_projects(repo_projects, inputs),
-        set(['platform/project1', 'platform/project2']))
+        manifest_split.get_input_projects(repo_projects, inputs), {
+            'platform/project1': ['system/project1/path/to/file.h'],
+            'platform/project2': ['system/project2/path/to/another_file.cc'],
+        })
 
   def test_update_manifest(self):
     manifest_contents = """
@@ -200,7 +203,10 @@ class ManifestSplitTest(unittest.TestCase):
       tempfile.NamedTemporaryFile('w+t') as manifest_file, \
       tempfile.NamedTemporaryFile('w+t') as module_info_file, \
       tempfile.NamedTemporaryFile('w+t') as config_file, \
-      tempfile.NamedTemporaryFile('w+t') as split_manifest_file:
+      tempfile.NamedTemporaryFile('w+t') as split_manifest_file, \
+      tempfile.TemporaryDirectory() as temp_dir:
+
+      os.chdir(temp_dir)
 
       repo_list_file.write("""
         system/project1 : platform/project1
@@ -208,7 +214,8 @@ class ManifestSplitTest(unittest.TestCase):
         system/project3 : platform/project3
         system/project4 : platform/project4
         system/project5 : platform/project5
-        system/project6 : platform/project6""")
+        system/project6 : platform/project6
+        vendor/project1 : vendor/project1""")
       repo_list_file.flush()
 
       manifest_file.write("""
@@ -219,6 +226,7 @@ class ManifestSplitTest(unittest.TestCase):
           <project name="platform/project4" path="system/project4" />
           <project name="platform/project5" path="system/project5" />
           <project name="platform/project6" path="system/project6" />
+          <project name="vendor/project1" path="vendor/project1" />
         </manifest>""")
       manifest_file.flush()
 
@@ -253,9 +261,14 @@ class ManifestSplitTest(unittest.TestCase):
       system/project4/file3
       """
 
+      product_makefile = 'vendor/project1/product.mk'
+      os.makedirs(os.path.dirname(product_makefile))
+      os.mknod(product_makefile)
+      kati_stamp_dump = product_makefile.encode()
+
       mock_check_output.side_effect = [
           ninja_inputs_droid,
-          b'',  # Unused kati makefiles. This is tested in its own method.
+          kati_stamp_dump,
           ninja_inputs_target_b,
           ninja_inputs_target_c,
       ]
@@ -267,11 +280,13 @@ class ManifestSplitTest(unittest.TestCase):
         </config>""")
       config_file.flush()
 
+      debug_file = os.path.join(temp_dir, 'debug.json')
+
       manifest_split.create_split_manifest(
           ['droid'], manifest_file.name, split_manifest_file.name,
           [config_file.name], repo_list_file.name, 'build-target.ninja',
           'ninja', module_info_file.name, 'unused kati stamp',
-          ['unused overlay'])
+          ['unused overlay'], debug_file)
       split_manifest = ET.parse(split_manifest_file.name)
       split_manifest_projects = [
           child.attrib['name']
@@ -288,7 +303,33 @@ class ManifestSplitTest(unittest.TestCase):
               'platform/project4',
               # Manual inclusion from config file
               'platform/project6',
+              # Inclusion from the Kati makefile stamp
+              'vendor/project1',
           ])
+
+      with open(debug_file) as debug_fp:
+        debug_data = json.load(debug_fp)
+
+        # Dependency for droid, but no other adjacent modules
+        self.assertTrue(debug_data['platform/project1']['direct_input'])
+        self.assertFalse(debug_data['platform/project1']['adjacent_input'])
+
+        # Dependency for droid and an adjacent module
+        self.assertTrue(debug_data['platform/project3']['direct_input'])
+        self.assertTrue(debug_data['platform/project3']['adjacent_input'])
+
+        # Dependency only for an adjacent module
+        self.assertFalse(debug_data['platform/project4']['direct_input'])
+        self.assertTrue(debug_data['platform/project4']['adjacent_input'])
+
+        # Included due to the config file
+        self.assertEqual(
+            debug_data['platform/project6']['manual_add_configs'][0],
+            config_file.name)
+
+        # Included due to the Kati makefile stamp
+        self.assertEqual(debug_data['vendor/project1']['kati_makefiles'][0],
+                         product_makefile)
 
 
 if __name__ == '__main__':
