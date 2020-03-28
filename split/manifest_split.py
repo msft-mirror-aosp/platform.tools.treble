@@ -51,8 +51,8 @@ options:
       Optional path(s) to treat as overlays when parsing the kati stamp file
       and scanning for makefiles. See the tools/treble/build/sandbox directory
       for more info about overlays. This flag can be passed more than once.
-  --debug
-      Print debug messages.
+  --debug-file <path>
+      If provided, debug info will be written to a JSON file at this path.
   -h  (--help)
       Display this usage message and exit.
 """
@@ -278,21 +278,22 @@ def scan_repo_projects(repo_projects, input_path):
 
 
 def get_input_projects(repo_projects, inputs):
-  """Returns the set of project names that contain the given input paths.
+  """Returns the collection of project names that contain the given input paths.
 
   Args:
     repo_projects: The output of the get_repo_projects function.
     inputs: The paths of input files used in the build, as given by the ninja
       inputs tool.
   """
-  input_project_paths = [
-      scan_repo_projects(repo_projects, input_path)
-      for input_path in inputs
-      if (not input_path.startswith("out/") and not input_path.startswith("/"))
-  ]
+  input_project_paths = {}
+  for input_path in inputs:
+    if not input_path.startswith("out/") and not input_path.startswith("/"):
+      input_project_paths.setdefault(
+          scan_repo_projects(repo_projects, input_path), []).append(input_path)
+
   return {
-      repo_projects[project_path]
-      for project_path in input_project_paths
+      repo_projects[project_path]: inputs
+      for project_path, inputs in input_project_paths.items()
       if project_path is not None
   }
 
@@ -335,10 +336,21 @@ def create_manifest_sha1_element(manifest, name):
   return sha1_element
 
 
+class DebugInfo():
+  """Simple class to store structured debug info for a project."""
+
+  def __init__(self):
+    self.direct_input = False
+    self.adjacent_input = False
+    self.kati_makefiles = []
+    self.manual_add_configs = []
+    self.manual_remove_configs = []
+
+
 def create_split_manifest(targets, manifest_file, split_manifest_file,
                           config_files, repo_list_file, ninja_build_file,
                           ninja_binary, module_info_file, kati_stamp_file,
-                          overlays):
+                          overlays, debug_file):
   """Creates and writes a split manifest by inspecting build inputs.
 
   Args:
@@ -356,46 +368,49 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
     kati_stamp_file: The path to a .kati_stamp file from a build.
     overlays: A list of paths to treat as overlays when parsing the kati stamp
       file.
+    debug_file: If not None, the path to write JSON debug info.
   """
-  remove_projects = set()
-  add_projects = set()
+  debug_info = {}
+
+  remove_projects = {}
+  add_projects = {}
   for config_file in config_files:
     config_remove_projects, config_add_projects = read_config(config_file)
-    remove_projects = remove_projects.union(config_remove_projects)
-    add_projects = add_projects.union(config_add_projects)
+    for project in config_remove_projects:
+      remove_projects.setdefault(project, []).append(config_file)
+    for project in config_add_projects:
+      add_projects.setdefault(project, []).append(config_file)
 
   repo_projects = get_repo_projects(repo_list_file)
   module_info = get_module_info(module_info_file, repo_projects)
 
   inputs = get_ninja_inputs(ninja_binary, ninja_build_file, targets)
-  input_projects = get_input_projects(repo_projects, inputs)
-  if logger.isEnabledFor(logging.DEBUG):
-    for project in sorted(input_projects):
-      logger.debug("Direct dependency: %s", project)
+  input_projects = set(get_input_projects(repo_projects, inputs).keys())
+  for project in input_projects:
+    debug_info.setdefault(project, DebugInfo()).direct_input = True
   logger.info("%s projects needed for targets \"%s\"", len(input_projects),
               " ".join(targets))
 
   kati_makefiles = get_kati_makefiles(kati_stamp_file, overlays)
   kati_makefiles_projects = get_input_projects(repo_projects, kati_makefiles)
-  if logger.isEnabledFor(logging.DEBUG):
-    for project in sorted(kati_makefiles_projects.difference(input_projects)):
-      logger.debug("Kati makefile dependency: %s", project)
-  input_projects = input_projects.union(kati_makefiles_projects)
+  for project, makefiles in kati_makefiles_projects.items():
+    debug_info.setdefault(project, DebugInfo()).kati_makefiles = makefiles
+  input_projects = input_projects.union(kati_makefiles_projects.keys())
   logger.info("%s projects after including Kati makefiles projects.",
               len(input_projects))
 
-  if logger.isEnabledFor(logging.DEBUG):
-    manual_projects = add_projects.difference(input_projects)
-    for project in sorted(manual_projects):
-      logger.debug("Manual inclusion: %s", project)
-  input_projects = input_projects.union(add_projects)
+  for project, configs in add_projects.items():
+    debug_info.setdefault(project, DebugInfo()).manual_add_configs = configs
+  for project, configs in remove_projects.items():
+    debug_info.setdefault(project, DebugInfo()).manual_remove_configs = configs
+  input_projects = input_projects.union(add_projects.keys())
   logger.info("%s projects after including manual additions.",
               len(input_projects))
 
   # Remove projects from our set of input projects before adding adjacent
   # modules, so that no project is added only because of an adjacent
   # dependency in a to-be-removed project.
-  input_projects = input_projects.difference(remove_projects)
+  input_projects = input_projects.difference(remove_projects.keys())
 
   # While we still have projects whose modules we haven't checked yet,
   checked_projects = set()
@@ -411,11 +426,10 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
 
     # adding those modules' input projects to our list of projects.
     inputs = get_ninja_inputs(ninja_binary, ninja_build_file, modules)
-    adjacent_module_additions = get_input_projects(repo_projects, inputs)
-    if logger.isEnabledFor(logging.DEBUG):
-      for project in sorted(
-          adjacent_module_additions.difference(input_projects)):
-        logger.debug("Adjacent module dependency: %s", project)
+    adjacent_module_additions = set(
+        get_input_projects(repo_projects, inputs).keys())
+    for project in adjacent_module_additions:
+      debug_info.setdefault(project, DebugInfo()).adjacent_input = True
     input_projects = input_projects.union(adjacent_module_additions)
     logger.info("%s total projects so far.", len(input_projects))
 
@@ -424,18 +438,28 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
   original_manifest = ET.parse(manifest_file)
   original_sha1 = create_manifest_sha1_element(original_manifest, "original")
   split_manifest = update_manifest(original_manifest, input_projects,
-                                   remove_projects)
+                                   remove_projects.keys())
   split_manifest.getroot().append(original_sha1)
   split_manifest.getroot().append(
       create_manifest_sha1_element(split_manifest, "self"))
   split_manifest.write(split_manifest_file)
+
+  if debug_file:
+    with open(debug_file, "w") as debug_fp:
+      logger.info("Writing debug info to %s", debug_file)
+      json.dump(
+          debug_info,
+          fp=debug_fp,
+          sort_keys=True,
+          indent=2,
+          default=lambda info: info.__dict__)
 
 
 def main(argv):
   try:
     opts, args = getopt.getopt(argv, "h", [
         "help",
-        "debug",
+        "debug-file=",
         "manifest=",
         "split-manifest=",
         "config=",
@@ -451,6 +475,7 @@ def main(argv):
     print("**%s**" % str(err), file=sys.stderr)
     sys.exit(2)
 
+  debug_file = None
   manifest_file = None
   split_manifest_file = None
   config_files = [DEFAULT_CONFIG_PATH]
@@ -465,8 +490,8 @@ def main(argv):
     if o in ("-h", "--help"):
       print(__doc__, file=sys.stderr)
       sys.exit()
-    elif o in ("--debug"):
-      logger.setLevel(logging.DEBUG)
+    elif o in ("--debug-file"):
+      debug_file = a
     elif o in ("--manifest"):
       manifest_file = a
     elif o in ("--split-manifest"):
@@ -522,7 +547,8 @@ def main(argv):
       ninja_binary=ninja_binary,
       module_info_file=module_info_file,
       kati_stamp_file=kati_stamp_file,
-      overlays=overlays)
+      overlays=overlays,
+      debug_file=debug_file)
 
 
 if __name__ == "__main__":
