@@ -176,7 +176,20 @@ def get_ninja_inputs(ninja_binary, ninja_build_file, modules):
           "inputs",
           "-d",
       ] + list(modules)).decode().strip("\n").split("\n"))
-  return {path.strip() for path in inputs}
+
+  def input_allowed(path):
+    path = path.strip()
+    if path.endswith("TEST_MAPPING") and "test_mapping" not in modules:
+      # Exclude projects that are only needed for TEST_MAPPING files, unless the
+      # user is asking to build 'test_mapping'.
+      return False
+    if path.endswith("MODULE_LICENSE_GPL"):
+      # Exclude projects that are included only due to having a
+      # MODULE_LICENSE_GPL file, if no other inputs from that project are used.
+      return False
+    return path
+
+  return {path.strip() for path in inputs if input_allowed(path)}
 
 
 def get_kati_makefiles(kati_stamp_file, overlays):
