@@ -88,6 +88,31 @@ class ManifestSplitTest(unittest.TestCase):
         manifest_split.get_module_info(module_info_file.name, repo_projects)
 
   @mock.patch.object(subprocess, 'check_output', autospec=True)
+  def test_get_ninja_inputs(self, mock_check_output):
+    mock_check_output.return_value = b"""
+    path/to/input1
+    path/to/input2
+    path/to/TEST_MAPPING
+    path/to/MODULE_LICENSE_GPL
+    """
+
+    inputs = manifest_split.get_ninja_inputs('unused', 'unused', {'droid'})
+    self.assertEqual(inputs, {'path/to/input1', 'path/to/input2'})
+
+  @mock.patch.object(subprocess, 'check_output', autospec=True)
+  def test_get_ninja_inputs_includes_test_mapping(self, mock_check_output):
+    mock_check_output.return_value = b"""
+    path/to/input1
+    path/to/input2
+    path/to/TEST_MAPPING
+    """
+
+    inputs = manifest_split.get_ninja_inputs('unused', 'unused',
+                                             {'droid', 'test_mapping'})
+    self.assertEqual(
+        inputs, {'path/to/input1', 'path/to/input2', 'path/to/TEST_MAPPING'})
+
+  @mock.patch.object(subprocess, 'check_output', autospec=True)
   def test_get_kati_makefiles(self, mock_check_output):
     with tempfile.TemporaryDirectory() as temp_dir:
       os.chdir(temp_dir)
@@ -114,9 +139,7 @@ class ManifestSplitTest(unittest.TestCase):
       makefiles.append(symlink_dest)
 
       # Mock the output of ckati_stamp_dump:
-      mock_check_output.side_effect = [
-          '\n'.join(makefiles).encode(),
-      ]
+      mock_check_output.return_value = '\n'.join(makefiles).encode()
 
       kati_makefiles = manifest_split.get_kati_makefiles(
           'stamp-file', ['overlays/oem_overlay/'])
