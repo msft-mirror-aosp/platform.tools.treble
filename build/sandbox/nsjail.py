@@ -290,7 +290,8 @@ def get_command(command,
                       overlay_config,
                       whiteout_list,
                       _SOURCE_MOUNT_POINT,
-                      rw_whitelist)
+                      rw_whitelist,
+                      quiet=quiet)
     bind_mounts = overlay.GetBindMounts()
   else:
     bind_mounts = collections.OrderedDict()
