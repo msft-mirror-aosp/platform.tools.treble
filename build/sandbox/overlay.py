@@ -301,7 +301,8 @@ class BindOverlay(object):
                config_file,
                whiteout_list = [],
                destination_dir=None,
-               rw_whitelist=None):
+               rw_whitelist=None,
+               quiet=False):
     """Inits Overlay with the details of what is going to be overlaid.
 
     Args:
@@ -316,7 +317,9 @@ class BindOverlay(object):
         read/write access. If none is provided, all paths will be mounted with
         read/write access. If the set is empty, all paths will be mounted
         read-only.
+      quiet: A boolean that, when True, suppresses debug output.
     """
+    self._quiet = quiet
 
     if not destination_dir:
       destination_dir = source_dir
@@ -359,13 +362,8 @@ class BindOverlay(object):
           raise ValueError("Path '%s' must be a file or directory" % path_from)
 
     self._overlay_dirs = overlay_dirs
-    print('Applied overlays ' + ' '.join(self._overlay_dirs))
-
-  def __del__(self):
-    """Cleans up Overlay.
-    """
-    if self._overlay_dirs:
-      print('Stripped out overlay ' + ' '.join(self._overlay_dirs))
+    if not self._quiet:
+      print('Applied overlays ' + ' '.join(self._overlay_dirs))
 
 def get_config(config_file):
   """Parses the overlay configuration file.
