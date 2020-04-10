@@ -27,6 +27,12 @@
     <!-- ============================================================= -->
 
     <!-- ============================================================= -->
+    <!-- b/153651829: Symlinks that cross project boundaries -->
+    <!-- frameworks/base has symlinks that point to packages/modules/ArtPrebuilt -->
+    <add_project name="platform/packages/modules/ArtPrebuilt" />
+    <!-- ============================================================= -->
+
+    <!-- ============================================================= -->
     <!-- Needed for the repo tool. -->
     <add_project name="platform/tools/repohooks" />
     <!-- ============================================================= -->
