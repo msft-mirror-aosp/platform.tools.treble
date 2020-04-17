@@ -1,13 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
-    <!-- Needed for repo tool -->
-    <add_project name="platform/tools/repohooks" />
-    <!-- Needed for early build of Soong -->
-    <add_project name="platform/external/golang-protobuf" />
-    <!-- system/iorap: iorap.inode2filename depends on librxcpp -->
-    <add_project name="platform/external/Reactive-Extensions/RxCpp" />
-    <!-- system/bt/gd: bluetooth_packets_python3 depends on pybind11_headers -->
-    <add_project name="platform/external/python/pybind11" />
+    <!-- ============================================================= -->
+    <!-- b/151670189: Makefiles referencing other projects from find-files-in-subdirs. -->
     <!-- test/vts/tools/build/tasks/vts_package.mk runs 'cd' on these dirs -->
     <add_project name="platform/test/vts-testcase/fuzz" />
     <add_project name="platform/test/vts-testcase/hal" />
@@ -15,11 +9,32 @@
     <add_project name="platform/test/vts-testcase/kernel" />
     <add_project name="platform/test/vts-testcase/nbu" />
     <add_project name="platform/test/vts-testcase/performance" />
-    <add_project name="platform/test/vts-testcase/security" />
     <add_project name="platform/test/vts-testcase/vndk" />
-    <!-- bionic/libc:libc_ndk depends on libscudo -->
-    <add_project name="platform/external/scudo" />
+    <!-- ============================================================= -->
+
+    <!-- ============================================================= -->
+    <!-- b/151755703: header_libs or include_dirs of outside projects in unbuilt modules. -->
+    <!-- system/bt/gd: bluetooth_packets_python3 depends on pybind11_headers -->
+    <add_project name="platform/external/python/pybind11" />
+    <!-- system/iorap: iorap.inode2filename depends on librxcpp -->
+    <add_project name="platform/external/Reactive-Extensions/RxCpp" />
+    <!-- ============================================================= -->
+
+    <!-- ============================================================= -->
+    <!-- b/151673809: Cross-project module type usage. -->
     <!-- external/crosvm/gpu_display uses module type wayland_protocol_codegen -->
     <add_project name="platform/external/wayland-protocols" />
+    <!-- ============================================================= -->
+
+    <!-- ============================================================= -->
+    <!-- b/153651829: Symlinks that cross project boundaries -->
+    <!-- frameworks/base has symlinks that point to packages/modules/ArtPrebuilt -->
+    <add_project name="platform/packages/modules/ArtPrebuilt" />
+    <!-- ============================================================= -->
+
+    <!-- ============================================================= -->
+    <!-- Needed for the repo tool. -->
+    <add_project name="platform/tools/repohooks" />
+    <!-- ============================================================= -->
 </config>
 
