@@ -301,7 +301,6 @@ class BindOverlay(object):
                config_file,
                whiteout_list = [],
                destination_dir=None,
-               rw_whitelist=None,
                quiet=False):
     """Inits Overlay with the details of what is going to be overlaid.
 
@@ -313,10 +312,6 @@ class BindOverlay(object):
       destination_dir: A string with the path where the overlay filesystem
         will be created. If none is provided, the overlay filesystem
         will be applied directly on top of source_dir.
-      rw_whitelist: An optional set of source paths to bind mount with
-        read/write access. If none is provided, all paths will be mounted with
-        read/write access. If the set is empty, all paths will be mounted
-        read-only.
       quiet: A boolean that, when True, suppresses debug output.
     """
     self._quiet = quiet
@@ -333,8 +328,12 @@ class BindOverlay(object):
     # seems appropriate
     skip_subdirs = set(whiteout_list)
 
-    # The read/write whitelist provids paths relative to the source dir. It
+    # The read/write whitelist provides paths relative to the source dir. It
     # needs to be updated with absolute paths to make lookup possible.
+    rw_whitelist_map = get_rw_whitelist_map(config_file)
+    rw_whitelist = None
+    if target in rw_whitelist_map and rw_whitelist_map[target]:
+      rw_whitelist = rw_whitelist_map[target]
     if rw_whitelist:
       rw_whitelist = {os.path.join(source_dir, p) for p in rw_whitelist}
 
@@ -380,6 +379,29 @@ def get_config(config_file):
     tree = ET.parse(config_file)
     config = tree.getroot()
   return config
+
+def get_rw_whitelist_map(config_file):
+  """Retrieves the map of allowed read-write paths for each target.
+
+  Args:
+    config_file: A string path to the XML config file.
+
+  Returns:
+    A dict of string lists of keyed by target name. Each value in the
+    dict is a list of allowed read-write paths corresponding to
+    the target.
+  """
+  rw_whitelist_map = {}
+  config = get_config(config_file)
+  # The presence of the config file is optional
+  if config:
+    for target in config.findall('target'):
+      name = target.get('name')
+      rw_whitelist = [a.get('path') for a in target.findall('allow_readwrite')]
+      rw_whitelist_map[name] = rw_whitelist
+
+  return rw_whitelist_map
+
 
 def get_overlay_map(config_file):
   """Retrieves the map of overlays for each target.
