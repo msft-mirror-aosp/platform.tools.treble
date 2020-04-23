@@ -44,45 +44,12 @@ _CHROOT_MOUNT_POINTS = [
   'usr',
 ]
 
-def load_rw_whitelist(rw_whitelist_config):
-  """Loads a read/write whitelist configuration file.
-
-  The read/write whitelist configuration file is a text file that contains a
-  list of source_dir relative paths which should be mounted read/write inside
-  the build sandbox. Empty lines and lines begnning with a comment marker ('#')
-  will be ignored. An empty whitelist implies that all source paths are mounted
-  read-only. An empty rw_whitelist_config argument implies that all source
-  paths are mounted read/write.
-
-  Args:
-    rw_whitelist_config: A string path to a read/write whitelist file.
-
-  Returns:
-    A set of whitelist path strings.
-  """
-  if not rw_whitelist_config:
-    return None
-
-  if not os.path.exists(rw_whitelist_config):
-    return None
-
-  ret = set()
-  with open(rw_whitelist_config, 'r') as f:
-    for p in f.read().splitlines():
-      p = p.strip()
-      if not p or p.startswith('#'):
-        continue
-      ret.add(p)
-
-  return ret
-
 
 def run(command,
         android_target,
         nsjail_bin,
         chroot,
         overlay_config=None,
-        rw_whitelist_config=None,
         source_dir=os.getcwd(),
         out_dirname_for_whiteout=None,
         dist_dir=None,
@@ -109,7 +76,6 @@ def run(command,
     nsjail_bin: A string with the path to the nsjail binary.
     chroot: A string with the path to the chroot.
     overlay_config: A string path to an overlay configuration file.
-    rw_whitelist_config: A string path to a read/write whitelist configuration file.
     source_dir: A string with the path to the Android platform source.
     out_dirname_for_whiteout: The optional name of the folder within
       source_dir that is the Android build out folder *as seen from outside
@@ -147,7 +113,6 @@ def run(command,
       nsjail_bin=nsjail_bin,
       chroot=chroot,
       overlay_config=overlay_config,
-      rw_whitelist_config=rw_whitelist_config,
       source_dir=source_dir,
       out_dirname_for_whiteout=out_dirname_for_whiteout,
       dist_dir=dist_dir,
@@ -178,7 +143,6 @@ def get_command(command,
         nsjail_bin,
         chroot,
         overlay_config=None,
-        rw_whitelist_config=None,
         source_dir=os.getcwd(),
         out_dirname_for_whiteout=None,
         dist_dir=None,
@@ -202,7 +166,6 @@ def get_command(command,
     nsjail_bin: A string with the path to the nsjail binary.
     chroot: A string with the path to the chroot.
     overlay_config: A string path to an overlay configuration file.
-    rw_whitelist_config: A string path to a read/write whitelist configuration file.
     source_dir: A string with the path to the Android platform source.
     out_dirname_for_whiteout: The optional name of the folder within
       source_dir that is the Android build out folder *as seen from outside
@@ -280,8 +243,6 @@ def get_command(command,
     if not os.path.exists(out_dir):
       os.makedirs(out_dir)
 
-  rw_whitelist = load_rw_whitelist(rw_whitelist_config)
-
   # Apply the overlay for the selected Android target to the source
   # directory if an overlay configuration was provided
   if overlay_config and os.path.exists(overlay_config):
@@ -290,7 +251,6 @@ def get_command(command,
                       overlay_config,
                       whiteout_list,
                       _SOURCE_MOUNT_POINT,
-                      rw_whitelist,
                       quiet=quiet)
     bind_mounts = overlay.GetBindMounts()
   else:
@@ -412,9 +372,6 @@ def parse_args():
       '--overlay_config',
       help='Path to the overlay configuration file.')
   parser.add_argument(
-      '--rw_whitelist_config',
-      help='Path to the read/write whitelist configuration file.')
-  parser.add_argument(
       '--source_dir',
       default=os.getcwd(),
       help='Path to Android platform source to be mounted as /src.')
@@ -519,7 +476,6 @@ def run_with_args(args):
   run(chroot=args.chroot,
       nsjail_bin=args.nsjail_bin,
       overlay_config=args.overlay_config,
-      rw_whitelist_config=args.rw_whitelist_config,
       source_dir=args.source_dir,
       command=args.command.split(),
       android_target=args.android_target,
