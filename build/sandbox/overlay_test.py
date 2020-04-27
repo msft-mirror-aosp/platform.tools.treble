@@ -135,11 +135,11 @@ class BindOverlayTest(unittest.TestCase):
         '  <target name="unittest">'
         '    <overlay name="unittest1"/>'
         '    <overlay name="unittest2"/>'
+        '    <allow_readwrite path="overlays/unittest1/upper_subdir/lower_subdir/from_unittest1"/>'
         '  </target>'
         '</config>'
         )
       test_config.flush()
-      rw_whitelist = set('overlays/unittest1/uppser_subdir/lower_subdir/from_unittest1')
       o = overlay.BindOverlay(
           config_file=test_config.name,
           target='unittest',
@@ -156,7 +156,7 @@ class BindOverlayTest(unittest.TestCase):
       'overlays/unittest2/upper_subdir/lower_subdir/from_unittest2')
     bind_destination = os.path.join(self.source_dir,
       'upper_subdir/lower_subdir/from_unittest2')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, False))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
 
   def testValidOverlaidDir(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
