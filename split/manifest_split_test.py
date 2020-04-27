@@ -58,34 +58,64 @@ class ManifestSplitTest(unittest.TestCase):
   def test_get_module_info(self):
     with tempfile.NamedTemporaryFile('w+t') as module_info_file:
       module_info_file.write("""{
-        "target1a": { "path": ["system/project1"] },
-        "target1b": { "path": ["system/project1"] },
-        "target2": { "path": ["out/project2"] },
-        "target3": { "path": ["vendor/google/project3"] }
+        "target1a": { "class": ["EXECUTABLES"], "path": ["system/project1"], "dependencies": ["target2"] },
+        "target1b": { "class": ["EXECUTABLES"], "path": ["system/project1"], "dependencies": ["target3", "target42"] },
+        "target2": { "class": ["SHARED_LIBRARIES"], "path": ["out/project2"], "dependencies": [] },
+        "target3": { "class": ["SHARED_LIBRARIES"], "path": ["vendor/google/project3"], "dependencies": ["x", "y", "z"] },
+        "target4a": { "class": ["APPS"], "path": ["system/project4"], "dependencies": ["out/target/common/obj/JAVA_LIBRARIES/target4b_intermediates/classes-header.jar"] },
+        "target4b": { "class": ["JAVA_LIBRARIES"],  "path": ["system/project4"], "dependencies": [] }
       }""")
       module_info_file.flush()
       repo_projects = {
           'system/project1': 'platform/project1',
+          'system/project4': 'platform/project4',
           'vendor/google/project3': 'vendor/project3',
       }
-      module_info = manifest_split.get_module_info(module_info_file.name,
-                                                   repo_projects)
+      module_info = manifest_split.ModuleInfo(module_info_file.name,
+                                              repo_projects)
       self.assertEqual(
-          module_info, {
+          module_info.project_modules, {
               'platform/project1': set(['target1a', 'target1b']),
+              'platform/project4': set(['target4a', 'target4b']),
               'vendor/project3': set(['target3']),
+          })
+      self.assertEqual(
+          module_info.module_project, {
+              'target1a': 'platform/project1',
+              'target1b': 'platform/project1',
+              'target3': 'vendor/project3',
+              'target4a': 'platform/project4',
+              'target4b': 'platform/project4',
+          })
+      self.assertEqual(
+          module_info.module_class, {
+              'target1a': 'EXECUTABLES',
+              'target1b': 'EXECUTABLES',
+              'target2': 'SHARED_LIBRARIES',
+              'target3': 'SHARED_LIBRARIES',
+              'target4a': 'APPS',
+              'target4b': 'JAVA_LIBRARIES',
+          })
+      self.assertEqual(
+          module_info.module_deps, {
+              'target1a': ['target2'],
+              'target1b': ['target3', 'target42'],
+              'target2': [],
+              'target3': ['x', 'y', 'z'],
+              'target4a': ['target4b'],
+              'target4b': [],
           })
 
   def test_get_module_info_raises_on_unknown_module_path(self):
     with tempfile.NamedTemporaryFile('w+t') as module_info_file:
       module_info_file.write("""{
-        "target1": { "path": ["system/unknown/project1"] }
+        "target1": { "class": ["EXECUTABLES"], "path": ["system/unknown/project1"], "dependencies": [] }
       }""")
       module_info_file.flush()
       repo_projects = {}
       with self.assertRaisesRegex(ValueError,
                                   'Unknown module path for module target1'):
-        manifest_split.get_module_info(module_info_file.name, repo_projects)
+        manifest_split.ModuleInfo(module_info_file.name, repo_projects)
 
   @mock.patch.object(subprocess, 'check_output', autospec=True)
   def test_get_ninja_inputs(self, mock_check_output):
@@ -96,7 +126,7 @@ class ManifestSplitTest(unittest.TestCase):
     path/to/MODULE_LICENSE_GPL
     """
 
-    inputs = manifest_split.get_ninja_inputs('unused', 'unused', {'droid'})
+    inputs = manifest_split.get_ninja_inputs('unused', 'unused', ['droid'])
     self.assertEqual(inputs, {'path/to/input1', 'path/to/input2'})
 
   @mock.patch.object(subprocess, 'check_output', autospec=True)
@@ -108,7 +138,7 @@ class ManifestSplitTest(unittest.TestCase):
     """
 
     inputs = manifest_split.get_ninja_inputs('unused', 'unused',
-                                             {'droid', 'test_mapping'})
+                                             ['droid', 'test_mapping'])
     self.assertEqual(
         inputs, {'path/to/input1', 'path/to/input2', 'path/to/TEST_MAPPING'})
 
@@ -238,6 +268,9 @@ class ManifestSplitTest(unittest.TestCase):
         system/project4 : platform/project4
         system/project5 : platform/project5
         system/project6 : platform/project6
+        system/project7 : platform/project7
+        system/project8 : platform/project8
+        system/project9 : platform/project9
         vendor/project1 : vendor/project1""")
       repo_list_file.flush()
 
@@ -249,17 +282,23 @@ class ManifestSplitTest(unittest.TestCase):
           <project name="platform/project4" path="system/project4" />
           <project name="platform/project5" path="system/project5" />
           <project name="platform/project6" path="system/project6" />
+          <project name="platform/project7" path="system/project7" />
+          <project name="platform/project8" path="system/project8" />
+          <project name="platform/project9" path="system/project9" />
           <project name="vendor/project1" path="vendor/project1" />
         </manifest>""")
       manifest_file.flush()
 
       module_info_file.write("""{
-        "droid": { "path": ["system/project1"] },
-        "target_a": { "path": ["out/project2"] },
-        "target_b": { "path": ["system/project3"] },
-        "target_c": { "path": ["system/project4"] },
-        "target_d": { "path": ["system/project5"] },
-        "target_e": { "path": ["system/project6"] }
+        "droid": { "class": ["EXECUTABLES"], "path": ["system/project1"], "dependencies": [] },
+        "target_a": { "class": ["EXECUTABLES"], "path": ["out/project2"], "dependencies": ["unknown_module_a"] },
+        "target_b": { "class": ["EXECUTABLES"], "path": ["system/project3"], "dependencies": ["target_f", "unknown_module_b"] },
+        "target_c": { "class": ["EXECUTABLES"], "path": ["system/project4"], "dependencies": [] },
+        "target_d": { "class": ["EXECUTABLES"], "path": ["system/project5"], "dependencies": [] },
+        "target_e": { "class": ["EXECUTABLES"], "path": ["system/project6"], "dependencies": [] },
+        "target_f": { "class": ["HEADER_LIBRARIES"], "path": ["system/project7"], "dependencies": [] },
+        "target_g": { "class": ["SHARED_LIBRARIES"], "path": ["system/project8"], "dependencies": ["target_h"] },
+        "target_h": { "class": ["HEADER_LIBRARIES"], "path": ["system/project9"], "dependencies": [] }
       }""")
       module_info_file.flush()
 
@@ -326,6 +365,8 @@ class ManifestSplitTest(unittest.TestCase):
               'platform/project4',
               # Manual inclusion from config file
               'platform/project6',
+              # From target_b (depends on target_f header library)
+              'platform/project7',
               # Inclusion from the Kati makefile stamp
               'vendor/project1',
           ])
@@ -336,14 +377,22 @@ class ManifestSplitTest(unittest.TestCase):
         # Dependency for droid, but no other adjacent modules
         self.assertTrue(debug_data['platform/project1']['direct_input'])
         self.assertFalse(debug_data['platform/project1']['adjacent_input'])
+        self.assertFalse(debug_data['platform/project1']['deps_input'])
 
         # Dependency for droid and an adjacent module
         self.assertTrue(debug_data['platform/project3']['direct_input'])
         self.assertTrue(debug_data['platform/project3']['adjacent_input'])
+        self.assertFalse(debug_data['platform/project3']['deps_input'])
 
         # Dependency only for an adjacent module
         self.assertFalse(debug_data['platform/project4']['direct_input'])
         self.assertTrue(debug_data['platform/project4']['adjacent_input'])
+        self.assertFalse(debug_data['platform/project4']['deps_input'])
+
+        # Included via header library
+        self.assertFalse(debug_data['platform/project7']['direct_input'])
+        self.assertFalse(debug_data['platform/project7']['adjacent_input'])
+        self.assertTrue(debug_data['platform/project7']['deps_input'])
 
         # Included due to the config file
         self.assertEqual(
