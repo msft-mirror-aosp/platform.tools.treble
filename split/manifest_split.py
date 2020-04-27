@@ -65,6 +65,7 @@ import json
 import logging
 import os
 import pkg_resources
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -81,6 +82,11 @@ logger = logging.getLogger(os.path.basename(__file__))
 DEFAULT_CONFIG_PATH = pkg_resources.resource_filename(__name__,
                                                       "default_config.xml")
 
+# Pattern that matches a java dependency.
+_JAVA_LIB_PATTERN = re.compile(
+    # pylint: disable=line-too-long
+    '^out/target/common/obj/JAVA_LIBRARIES/(.+)_intermediates/classes-header.jar$'
+)
 
 def read_config(config_file):
   """Reads a config XML file to find extra projects to add or remove.
@@ -119,21 +125,34 @@ def get_repo_projects(repo_list_file):
   return dict([entry.split(" : ") for entry in repo_list])
 
 
-def get_module_info(module_info_file, repo_projects):
-  """Returns a dict of { project name : set of modules } in each project.
+class ModuleInfo:
+  """Contains various mappings to/from module/project"""
 
-  Args:
-    module_info_file: The path to a module-info.json file from a build.
-    repo_projects: The output of the get_repo_projects function.
+  def __init__(self, module_info_file, repo_projects):
+    """Initialize a module info instance.
 
-  Raises:
-    ValueError: A module from module-info.json belongs to a path not
-      known by the repo projects output.
-  """
-  project_modules = {}
+    Builds various maps related to platform build system modules and how they
+    relate to each other and projects.
 
-  with open(module_info_file) as module_info_file:
-    module_info = json.load(module_info_file)
+    Args:
+      module_info_file: The path to a module-info.json file from a build.
+      repo_projects: The output of the get_repo_projects function.
+
+    Raises:
+      ValueError: A module from module-info.json belongs to a path not
+        known by the repo projects output.
+    """
+    # Maps a project to the set of modules it contains.
+    self.project_modules = {}
+    # Maps a module to the project that contains it.
+    self.module_project = {}
+    # Maps a module to its class.
+    self.module_class = {}
+    # Maps a module to modules it depends on.
+    self.module_deps = {}
+
+    with open(module_info_file) as module_info_file:
+      module_info = json.load(module_info_file)
 
     def module_has_valid_path(module):
       return ("path" in module_info[module] and module_info[module]["path"] and
@@ -153,8 +172,25 @@ def get_module_info(module_info_file, repo_projects):
       if not project_path:
         raise ValueError("Unknown module path for module %s: %s" %
                          (module, module_info[module]))
-      project_modules.setdefault(repo_projects[project_path], set()).add(module)
-    return project_modules
+      repo_project = repo_projects[project_path]
+      self.project_modules.setdefault(repo_project, set()).add(module)
+      self.module_project[module] = repo_project
+
+    def dep_from_raw_dep(raw_dep):
+      match = re.search(_JAVA_LIB_PATTERN, raw_dep)
+      return match.group(1) if match else raw_dep
+
+    def deps_from_raw_deps(raw_deps):
+      return [dep_from_raw_dep(raw_dep) for raw_dep in raw_deps]
+
+    self.module_class = {
+        module: module_info[module]["class"][0]
+        for module in module_info
+    }
+    self.module_deps = {
+        module: deps_from_raw_deps(module_info[module]["dependencies"])
+        for module in module_info
+    }
 
 
 def get_ninja_inputs(ninja_binary, ninja_build_file, modules):
@@ -165,17 +201,21 @@ def get_ninja_inputs(ninja_binary, ninja_build_file, modules):
   Args:
     ninja_binary: The path to a ninja binary.
     ninja_build_file: The path to a .ninja file from a build.
-    modules: The set of modules to scan for inputs.
+    modules: The list of modules to scan for inputs.
   """
-  inputs = set(
-      subprocess.check_output([
-          ninja_binary,
-          "-f",
-          ninja_build_file,
-          "-t",
-          "inputs",
-          "-d",
-      ] + list(modules)).decode().strip("\n").split("\n"))
+  inputs = set()
+  NINJA_SHARD_LIMIT = 20000
+  for i in range(0, len(modules), NINJA_SHARD_LIMIT):
+    modules_shard = modules[i:i + NINJA_SHARD_LIMIT]
+    inputs = inputs.union(set(
+        subprocess.check_output([
+            ninja_binary,
+            "-f",
+            ninja_build_file,
+            "-t",
+            "inputs",
+            "-d",
+        ] + list(modules_shard)).decode().strip("\n").split("\n")))
 
   def input_allowed(path):
     path = path.strip()
@@ -355,6 +395,7 @@ class DebugInfo():
   def __init__(self):
     self.direct_input = False
     self.adjacent_input = False
+    self.deps_input = False
     self.kati_makefiles = []
     self.manual_add_configs = []
     self.manual_remove_configs = []
@@ -395,14 +436,15 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
       add_projects.setdefault(project, []).append(config_file)
 
   repo_projects = get_repo_projects(repo_list_file)
-  module_info = get_module_info(module_info_file, repo_projects)
+  module_info = ModuleInfo(module_info_file, repo_projects)
 
   inputs = get_ninja_inputs(ninja_binary, ninja_build_file, targets)
   input_projects = set(get_input_projects(repo_projects, inputs).keys())
   for project in input_projects:
     debug_info.setdefault(project, DebugInfo()).direct_input = True
-  logger.info("%s projects needed for targets \"%s\"", len(input_projects),
-              " ".join(targets))
+  logger.info(
+      "%s projects needed for Ninja-graph direct dependencies of targets \"%s\"",
+      len(input_projects), " ".join(targets))
 
   kati_makefiles = get_kati_makefiles(kati_stamp_file, overlays)
   kati_makefiles_projects = get_input_projects(repo_projects, kati_makefiles)
@@ -428,14 +470,38 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
   # While we still have projects whose modules we haven't checked yet,
   checked_projects = set()
   projects_to_check = input_projects.difference(checked_projects)
+
+  logger.info("Checking module-info dependencies for direct and adjacent modules...")
+  iteration = 0
+
   while projects_to_check:
+    iteration += 1
     # check all modules in each project,
     modules = []
+    deps_additions = set()
+
+    def process_deps(module):
+      for d in module_info.module_deps[module]:
+        if d in module_info.module_class:
+          if module_info.module_class[d] == "HEADER_LIBRARIES":
+            hla = module_info.module_project[d]
+            if hla not in input_projects:
+              deps_additions.add(hla)
+
     for project in projects_to_check:
       checked_projects.add(project)
-      if project not in module_info:
+      if project not in module_info.project_modules:
         continue
-      modules += module_info[project]
+      for module in module_info.project_modules[project]:
+        modules.append(module)
+        process_deps(module)
+
+    for project in deps_additions:
+      debug_info.setdefault(project, DebugInfo()).deps_input = True
+    input_projects = input_projects.union(deps_additions)
+    logger.info(
+        "pass %d - %d projects after including HEADER_LIBRARIES dependencies",
+        iteration, len(input_projects))
 
     # adding those modules' input projects to our list of projects.
     inputs = get_ninja_inputs(ninja_binary, ninja_build_file, modules)
@@ -444,9 +510,13 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
     for project in adjacent_module_additions:
       debug_info.setdefault(project, DebugInfo()).adjacent_input = True
     input_projects = input_projects.union(adjacent_module_additions)
-    logger.info("%s total projects so far.", len(input_projects))
+    logger.info(
+        "pass %d - %d projects after including adjacent-module Ninja-graph dependencies",
+        iteration, len(input_projects))
 
     projects_to_check = input_projects.difference(checked_projects)
+
+  logger.info("%s projects - complete", len(input_projects))
 
   original_manifest = ET.parse(manifest_file)
   original_sha1 = create_manifest_sha1_element(original_manifest, "original")
