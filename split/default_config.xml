@@ -13,14 +13,6 @@
     <!-- ============================================================= -->
 
     <!-- ============================================================= -->
-    <!-- b/151755703: header_libs or include_dirs of outside projects in unbuilt modules. -->
-    <!-- system/bt/gd: bluetooth_packets_python3 depends on pybind11_headers -->
-    <add_project name="platform/external/python/pybind11" />
-    <!-- system/iorap: iorap.inode2filename depends on librxcpp -->
-    <add_project name="platform/external/Reactive-Extensions/RxCpp" />
-    <!-- ============================================================= -->
-
-    <!-- ============================================================= -->
     <!-- b/151673809: Cross-project module type usage. -->
     <!-- external/crosvm/gpu_display uses module type wayland_protocol_codegen -->
     <add_project name="platform/external/wayland-protocols" />
