@@ -32,6 +32,8 @@ options:
             <add_project name="vendor/my/needed/project" />
             <remove_project name="vendor/my/unused/project" />
           </config>
+  --ignore-default-config
+      If provided, don't include default_config.xml.
   --repo-list <path>
       Optional path to the output of the 'repo list' command. Used if the
       output of 'repo list' needs pre-processing before being used by
@@ -44,9 +46,14 @@ options:
   --module-info <path>
       Optional path to the module-info.json file found in an out dir.
       If not provided, the default file is used based on the lunch environment.
+  --skip-module-info
+      If provided, skip parsing module-info.json for direct and adjacent
+      dependencies. Overrides --module-info option.
   --kati-stamp <path>
       Optional path to the .kati_stamp file found in an out dir.
       If not provided, the default file is used based on the lunch environment.
+  --skip-kati
+      If provided, skip Kati makefiles projects. Overrides --kati-stamp option.
   --overlay <path>
       Optional path(s) to treat as overlays when parsing the kati stamp file
       and scanning for makefiles. See the tools/treble/build/sandbox directory
@@ -436,7 +443,6 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
       add_projects.setdefault(project, []).append(config_file)
 
   repo_projects = get_repo_projects(repo_list_file)
-  module_info = ModuleInfo(module_info_file, repo_projects)
 
   inputs = get_ninja_inputs(ninja_binary, ninja_build_file, targets)
   input_projects = set(get_input_projects(repo_projects, inputs).keys())
@@ -446,13 +452,16 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
       "%s projects needed for Ninja-graph direct dependencies of targets \"%s\"",
       len(input_projects), " ".join(targets))
 
-  kati_makefiles = get_kati_makefiles(kati_stamp_file, overlays)
-  kati_makefiles_projects = get_input_projects(repo_projects, kati_makefiles)
-  for project, makefiles in kati_makefiles_projects.items():
-    debug_info.setdefault(project, DebugInfo()).kati_makefiles = makefiles
-  input_projects = input_projects.union(kati_makefiles_projects.keys())
-  logger.info("%s projects after including Kati makefiles projects.",
-              len(input_projects))
+  if kati_stamp_file:
+    kati_makefiles = get_kati_makefiles(kati_stamp_file, overlays)
+    kati_makefiles_projects = get_input_projects(repo_projects, kati_makefiles)
+    for project, makefiles in kati_makefiles_projects.items():
+      debug_info.setdefault(project, DebugInfo()).kati_makefiles = makefiles
+    input_projects = input_projects.union(kati_makefiles_projects.keys())
+    logger.info("%s projects after including Kati makefiles projects.",
+                len(input_projects))
+  else:
+    logger.info("Kati makefiles projects skipped.")
 
   for project, configs in add_projects.items():
     debug_info.setdefault(project, DebugInfo()).manual_add_configs = configs
@@ -468,10 +477,15 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
   input_projects = input_projects.difference(remove_projects.keys())
 
   # While we still have projects whose modules we haven't checked yet,
-  checked_projects = set()
-  projects_to_check = input_projects.difference(checked_projects)
+  if module_info_file:
+    module_info = ModuleInfo(module_info_file, repo_projects)
+    checked_projects = set()
+    projects_to_check = input_projects.difference(checked_projects)
+    logger.info("Checking module-info dependencies for direct and adjacent modules...")
+  else:
+    logging.info("Direct and adjacent modules skipped.")
+    projects_to_check = None
 
-  logger.info("Checking module-info dependencies for direct and adjacent modules...")
   iteration = 0
 
   while projects_to_check:
@@ -546,11 +560,14 @@ def main(argv):
         "manifest=",
         "split-manifest=",
         "config=",
+        "ignore-default-config",
         "repo-list=",
         "ninja-build=",
         "ninja-binary=",
         "module-info=",
+        "skip-module-info",
         "kati-stamp=",
+        "skip-kati",
         "overlay=",
     ])
   except getopt.GetoptError as err:
@@ -561,13 +578,16 @@ def main(argv):
   debug_file = None
   manifest_file = None
   split_manifest_file = None
-  config_files = [DEFAULT_CONFIG_PATH]
+  config_files = []
   repo_list_file = None
   ninja_build_file = None
   module_info_file = None
   ninja_binary = "ninja"
   kati_stamp_file = None
   overlays = []
+  ignore_default_config = False
+  skip_kati = False
+  skip_module_info = False
 
   for o, a in opts:
     if o in ("-h", "--help"):
@@ -581,6 +601,8 @@ def main(argv):
       split_manifest_file = a
     elif o in ("--config"):
       config_files.append(a)
+    elif o == "--ignore-default-config":
+      ignore_default_config = True
     elif o in ("--repo-list"):
       repo_list_file = a
     elif o in ("--ninja-build"):
@@ -589,8 +611,12 @@ def main(argv):
       ninja_binary = a
     elif o in ("--module-info"):
       module_info_file = a
+    elif o == "--skip-module-info":
+      skip_module_info = True
     elif o in ("--kati-stamp"):
       kati_stamp_file = a
+    elif o == "--skip-kati":
+      skip_kati = True
     elif o in ("--overlay"):
       overlays.append(a)
     else:
@@ -608,13 +634,26 @@ def main(argv):
     print(__doc__, file=sys.stderr)
     print("**Missing required flag --split-manifest**", file=sys.stderr)
     sys.exit(2)
-  if not module_info_file:
+
+  if not ignore_default_config:
+    config_files.append(DEFAULT_CONFIG_PATH)
+
+  if skip_module_info:
+    if module_info_file:
+      logging.warning("User provided both --skip-module-info and --module-info args.  Arg --module-info ignored.")
+    module_info_file = None
+  elif not module_info_file:
     module_info_file = os.path.join(os.environ["ANDROID_PRODUCT_OUT"],
                                     "module-info.json")
-  if not kati_stamp_file:
+  if skip_kati:
+    if kati_stamp_file:
+      logging.warning("User provided both --skip-kati and --kati-stamp args.  Arg --kati-stamp ignored.")
+    kati_stamp_file = None
+  elif not kati_stamp_file:
     kati_stamp_file = os.path.join(
         os.environ["ANDROID_BUILD_TOP"], "out",
         ".kati_stamp-%s" % os.environ["TARGET_PRODUCT"])
+
   if not ninja_build_file:
     ninja_build_file = os.path.join(
         os.environ["ANDROID_BUILD_TOP"], "out",
