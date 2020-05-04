@@ -403,6 +403,43 @@ class ManifestSplitTest(unittest.TestCase):
         self.assertEqual(debug_data['vendor/project1']['kati_makefiles'][0],
                          product_makefile)
 
+  @mock.patch.object(manifest_split, 'get_ninja_inputs', autospec=True)
+  @mock.patch.object(manifest_split, 'get_kati_makefiles', autospec=True)
+  @mock.patch.object(manifest_split.ModuleInfo, '__init__', autospec=True)
+  def test_create_split_manifest_skip_kati_module_info(self, mock_init,
+                                                       mock_get_kati_makefiles,
+                                                       mock_get_ninja_inputs):
+    with tempfile.NamedTemporaryFile('w+t') as repo_list_file, \
+            tempfile.NamedTemporaryFile('w+t') as manifest_file, \
+            tempfile.NamedTemporaryFile('w+t') as module_info_file, \
+            tempfile.NamedTemporaryFile('w+t') as config_file, \
+            tempfile.NamedTemporaryFile('w+t') as split_manifest_file, \
+            tempfile.TemporaryDirectory() as temp_dir:
+
+      os.chdir(temp_dir)
+
+      manifest_file.write("""
+        <manifest>
+        </manifest>""")
+      manifest_file.flush()
+
+      manifest_split.create_split_manifest(
+          targets=['droid'],
+          manifest_file=manifest_file.name,
+          split_manifest_file=split_manifest_file.name,
+          config_files=[],
+          repo_list_file=repo_list_file.name,
+          ninja_build_file='build-target.ninja',
+          ninja_binary='ninja',
+          kati_stamp_file=None,
+          module_info_file=None,
+          overlays=[],
+          debug_file=None)
+
+    mock_get_ninja_inputs.assert_called_with(
+        'ninja', 'build-target.ninja', ['droid'])
+    mock_get_kati_makefiles.assert_not_called()
+    mock_init.assert_not_called()
 
 if __name__ == '__main__':
   unittest.main()
