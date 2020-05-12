@@ -23,10 +23,9 @@ def _get_build_config_map(config):
     config: An XML Element that is the root of the config XML tree.
 
   Returns:
-    A dict of build configs keyed by name. Each build config
-    is itself a dict with two items: an 'android_target' item
-    with a string name, and a 'build_goals' item with list of string
-    build goals.
+    A dict of build configs keyed by name. Each build config is itself a dict
+    with two items: an 'android_target' item with a string name, and a
+    'build_goals' item with list of string build goals.
   """
   build_config_map = {}
   for target in config.findall('target'):
@@ -47,6 +46,81 @@ def _get_build_config_map(config):
   return build_config_map
 
 
+def _get_rw_whitelist_map(config):
+  """Retrieves the map of allowed read-write paths for each target.
+
+  Args:
+    config: An XML Element that is the root of the config XML tree.
+
+  Returns:
+    A dict of string lists of keyed by target name. Each value in the dict is a
+    list of allowed read-write paths corresponding to the target.
+  """
+  rw_whitelist_map = {}
+  for target in config.findall('target'):
+    name = target.get('name')
+    rw_whitelist = [a.get('path') for a in target.findall('allow_readwrite')]
+    rw_whitelist_map[name] = rw_whitelist
+
+  return rw_whitelist_map
+
+
+def _get_overlay_map(config):
+  """Retrieves the map of overlays for each target.
+
+  Args:
+    config: An XML Element that is the root of the config XML tree.
+
+  Returns:
+    A dict of keyed by target name. Each value in the dict is a list of overlay
+    names corresponding to the target.
+  """
+  overlay_map = {}
+  for target in config.findall('target'):
+    name = target.get('name')
+    overlay_list = [o.get('name') for o in target.findall('overlay')]
+    overlay_map[name] = overlay_list
+  # A valid configuration file is required to have at least one overlay target.
+  if not overlay_map:
+    raise ValueError('Error: the overlay configuration file is missing at '
+                     'least one overlay target')
+
+  return overlay_map
+
+
+def _get_fs_view_map(config):
+  """Retrieves the map of filesystem views for each target.
+
+  Args:
+    config: An XML Element that is the root of the config XML tree.
+
+  Returns:
+    A dict of filesystem views keyed by target name. A filesystem view is a
+    list of (source, destination) string path tuples.
+  """
+  fs_view_map = {}
+  # A valid config file is not required to include FS Views, only overlay
+  # targets.
+  views = {}
+  for view in config.findall('view'):
+    name = view.get('name')
+    paths = []
+    for path in view.findall('path'):
+      paths.append((path.get('source'), path.get('destination')))
+    views[name] = paths
+
+  for target in config.findall('target'):
+    target_name = target.get('name')
+    view_paths = []
+    for view in target.findall('view'):
+      view_paths.extend(views[view.get('name')])
+
+    if view_paths:
+      fs_view_map[target_name] = view_paths
+
+  return fs_view_map
+
+
 class Config:
   """Presents an API to the static XML configuration."""
 
@@ -64,6 +138,9 @@ class Config:
     tree = ET.parse(config_filename)
     config = tree.getroot()
     self._build_config_map = _get_build_config_map(config)
+    self._fs_view_map = _get_fs_view_map(config)
+    self._overlay_map = _get_overlay_map(config)
+    self._rw_whitelist_map = _get_rw_whitelist_map(config)
 
   def get_available_build_targets(self):
     """Return a list of available build targets."""
@@ -96,3 +173,45 @@ class Config:
       A list of strings, where each string is a goal to be passed to make.
     """
     return self._build_config_map[build_target]['build_goals']
+
+  def get_rw_whitelist_map(self):
+    """Return read-write whitelist map.
+
+    Returns:
+      A dict of string lists of keyed by target name. Each value in the dict is
+      a list of allowed read-write paths corresponding to the target.
+    """
+    return self._rw_whitelist_map
+
+  def get_overlay_map(self):
+    """Return the overlay map.
+
+    Returns:
+      A dict of keyed by target name. Each value in the dict is a list of
+      overlay names corresponding to the target.
+    """
+    return self._overlay_map
+
+  def get_fs_view_map(self):
+    """Return the filesystem view map.
+    Returns:
+      A dict of filesystem views keyed by target name. A filesystem view is a
+      list of (source, destination) string path tuples.
+    """
+    return self._fs_view_map
+
+def factory(config_filename):
+  """Create an instance of a Config class.
+
+  Args:
+    config_filename: The name of the file from which to load the config. This
+      can be None, which results in this function returning None.
+
+  Returns:
+    If config_filename is None, returns None. Otherwise, a new instance of a
+    Config class containing the configuration parsed from config_filename.
+  """
+  if config_filename is None:
+    return None
+
+  return Config(config_filename)

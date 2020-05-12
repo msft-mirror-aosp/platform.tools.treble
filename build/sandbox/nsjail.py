@@ -25,6 +25,7 @@ import collections
 import os
 import re
 import subprocess
+from . import config
 from .overlay import BindMount
 from .overlay import BindOverlay
 
@@ -112,7 +113,7 @@ def run(command,
       android_target=android_target,
       nsjail_bin=nsjail_bin,
       chroot=chroot,
-      overlay_config=overlay_config,
+      cfg=config.factory(overlay_config),
       source_dir=source_dir,
       out_dirname_for_whiteout=out_dirname_for_whiteout,
       dist_dir=dist_dir,
@@ -142,7 +143,7 @@ def get_command(command,
         android_target,
         nsjail_bin,
         chroot,
-        overlay_config=None,
+        cfg=None,
         source_dir=os.getcwd(),
         out_dirname_for_whiteout=None,
         dist_dir=None,
@@ -165,7 +166,7 @@ def get_command(command,
       inside the container.
     nsjail_bin: A string with the path to the nsjail binary.
     chroot: A string with the path to the chroot.
-    overlay_config: A string path to an overlay configuration file.
+    cfg: A config.Config instance or None.
     source_dir: A string with the path to the Android platform source.
     out_dirname_for_whiteout: The optional name of the folder within
       source_dir that is the Android build out folder *as seen from outside
@@ -243,12 +244,12 @@ def get_command(command,
     if not os.path.exists(out_dir):
       os.makedirs(out_dir)
 
-  # Apply the overlay for the selected Android target to the source
-  # directory if an overlay configuration was provided
-  if overlay_config and os.path.exists(overlay_config):
+  # Apply the overlay for the selected Android target to the source directory
+  # from the supplied config.Config instance (which may be None).
+  if cfg is not None:
     overlay = BindOverlay(android_target,
                       source_dir,
-                      overlay_config,
+                      cfg,
                       whiteout_list,
                       _SOURCE_MOUNT_POINT,
                       quiet=quiet)
