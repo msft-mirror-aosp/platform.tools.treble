@@ -15,56 +15,8 @@
 
 import argparse
 import os
+from . import config
 from . import nsjail
-import multiprocessing
-import xml.etree.ElementTree as ET
-
-def get_config(config_file):
-  """Parses the overlay configuration file.
-
-  Args:
-    config_file: A string path to the XML config file.
-
-  Returns:
-    A root config XML Element.
-    None if there is no config file.
-  """
-  config = None
-  if os.path.exists(config_file):
-    tree = ET.parse(config_file)
-    config = tree.getroot()
-  return config
-
-def get_build_config(config_file, build_target):
-  """Retrieves a map of all build config.
-
-  Args:
-    config_file: A string path to the XML config file.
-    build_target: A string build target.
-
-  Returns:
-    A dict with two items: an 'android_target' item
-    with a string name, and a 'build_goals' item with list of string
-    build goals.
-  """
-  build_config_map = {}
-  config = get_config(config_file)
-  for target in config.findall('target'):
-      target_name = target.get('name')
-      for build_config in target.findall('build_config'):
-          # The build config name defaults to the target name
-          build_config_name = build_config.get('name') or target_name
-          goal_list = [g.get('name') for g in build_config.findall('goal')]
-          # A valid build_config is required
-          # to have at least one overlay target
-          if not goal_list:
-            raise ValueError('Error: the build_config '
-              'is missing at least one goal')
-          build_config_map[build_config_name] = {
-              'android_target': target_name,
-              'build_goals': goal_list,
-          }
-  return build_config_map[build_target]
 
 
 def build(android_target, variant, nsjail_bin, chroot, dist_dir, build_id,
@@ -253,14 +205,15 @@ def main():
   # using the standard 'required' argparse option because
   # the argparser is reused by merge_android_sandboxed.py which
   # does not require --build_target.
-  if 'build_target' not in args:
+  if args['build_target'] is None:
     raise ValueError('--build_target is required.')
 
-  build_config = get_build_config(
-    args['overlay_config'], args['build_target'])
+  cfg = config.Config(args['overlay_config'])
+  android_target = cfg.get_build_config_android_target(args['build_target'])
+  build_goals = cfg.get_build_config_build_goals(args['build_target'])
 
   build(
-      android_target=build_config['android_target'],
+      android_target=android_target,
       variant=args['variant'],
       nsjail_bin=args['nsjail_bin'],
       chroot=args['chroot'],
@@ -269,7 +222,7 @@ def main():
       dist_dir=args['dist_dir'],
       build_id=args['build_id'],
       max_cpus=args['max_cpus'],
-      build_goals=build_config['build_goals'])
+      build_goals=build_goals)
 
 
 if __name__ == '__main__':
