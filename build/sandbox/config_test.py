@@ -41,55 +41,66 @@ _TEST_CONFIG_XML = """<config>
 class ConfigTest(unittest.TestCase):
   """unittest for Config."""
 
-  def setUp(self):
-    """Load _TEST_CONFIG_XML into a Config instance."""
+  def testConfigFilenameNone(self):
+    cfg = config.factory(None)
+    self.assertIsNone(cfg)
+
+  def testAvailableBuildTargets(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
       test_config.write(_TEST_CONFIG_XML)
       test_config.flush()
-      self._cfg = config.Config(test_config.name)
-
-  def testAvailableBuildTargets(self):
-    self.assertEqual(
-        self._cfg.get_available_build_targets(),
-        # Sorted, not lexical.
-        [
-            'android_target_1',
-            'android_target_2',
-            'build_target_2',
-        ])
+      cfg = config.factory(test_config.name)
+      self.assertEqual(
+          cfg.get_available_build_targets(),
+          # Sorted, not lexical.
+          [
+              'android_target_1',
+              'android_target_2',
+              'build_target_2',
+          ])
 
   def testBuildTargetToAndroidTarget(self):
-    # Test that build_target android_target_1 -> android_target_1.
-    self.assertEqual(
-        self._cfg.get_build_config_android_target('android_target_1'),
-        'android_target_1')
+    with tempfile.NamedTemporaryFile('w+t') as test_config:
+      test_config.write(_TEST_CONFIG_XML)
+      test_config.flush()
+      cfg = config.factory(test_config.name)
 
-    # Test that build_target android_target_2 -> android_target_2.
-    self.assertEqual(
-        self._cfg.get_build_config_android_target('android_target_2'),
-        'android_target_2')
+      # Test that build_target android_target_1 -> android_target_1.
+      self.assertEqual(
+          cfg.get_build_config_android_target('android_target_1'),
+          'android_target_1')
 
-    # Test that build_target build_target_2 -> android_target_2.
-    self.assertEqual(
-        self._cfg.get_build_config_android_target('build_target_2'),
-        'android_target_2')
+      # Test that build_target android_target_2 -> android_target_2.
+      self.assertEqual(
+          cfg.get_build_config_android_target('android_target_2'),
+          'android_target_2')
+
+      # Test that build_target build_target_2 -> android_target_2.
+      self.assertEqual(
+          cfg.get_build_config_android_target('build_target_2'),
+          'android_target_2')
 
   def testBuildTargetToBuildGoals(self):
-    # Test that build_target android_target_1 has goals droid and dist.
-    self.assertEqual(
-        self._cfg.get_build_config_build_goals('android_target_1'),
-        ['droid', 'dist'])
+    with tempfile.NamedTemporaryFile('w+t') as test_config:
+      test_config.write(_TEST_CONFIG_XML)
+      test_config.flush()
+      cfg = config.factory(test_config.name)
 
-    # Test that build_target android_target_2 has goals droid, dist, and
-    # goal_for_android_target_2.
-    self.assertEqual(
-        self._cfg.get_build_config_build_goals('android_target_2'),
-        ['droid', 'dist', 'goal_for_android_target_2'])
+      # Test that build_target android_target_1 has goals droid and dist.
+      self.assertEqual(
+          cfg.get_build_config_build_goals('android_target_1'),
+          ['droid', 'dist'])
 
-    # Test that build_target build_target_2 has goals droid and VAR=a.
-    self.assertEqual(
-        self._cfg.get_build_config_build_goals('build_target_2'),
-        ['droid', 'VAR=a'])
+      # Test that build_target android_target_2 has goals droid, dist, and
+      # goal_for_android_target_2.
+      self.assertEqual(
+          cfg.get_build_config_build_goals('android_target_2'),
+          ['droid', 'dist', 'goal_for_android_target_2'])
+
+      # Test that build_target build_target_2 has goals droid and VAR=a.
+      self.assertEqual(
+          cfg.get_build_config_build_goals('build_target_2'),
+          ['droid', 'VAR=a'])
 
 
 if __name__ == '__main__':
