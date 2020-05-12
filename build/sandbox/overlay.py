@@ -26,7 +26,7 @@ import collections
 import os
 import subprocess
 import tempfile
-import xml.etree.ElementTree as ET
+from . import config
 
 BindMount = collections.namedtuple('BindMount', ['source_dir', 'readonly'])
 
@@ -298,7 +298,7 @@ class BindOverlay(object):
   def __init__(self,
                target,
                source_dir,
-               config_file,
+               cfg,
                whiteout_list = [],
                destination_dir=None,
                quiet=False):
@@ -307,7 +307,7 @@ class BindOverlay(object):
     Args:
       target: A string with the name of the target to be prepared.
       source_dir: A string with the path to the Android platform source.
-      config_file: A string path to the XML config file.
+      cfg: A config.Config instance.
       whiteout_list: A list of directories to hide from the build system.
       destination_dir: A string with the path where the overlay filesystem
         will be created. If none is provided, the overlay filesystem
@@ -330,7 +330,7 @@ class BindOverlay(object):
 
     # The read/write whitelist provides paths relative to the source dir. It
     # needs to be updated with absolute paths to make lookup possible.
-    rw_whitelist_map = get_rw_whitelist_map(config_file)
+    rw_whitelist_map = cfg.get_rw_whitelist_map()
     rw_whitelist = None
     if target in rw_whitelist_map and rw_whitelist_map[target]:
       rw_whitelist = rw_whitelist_map[target]
@@ -338,7 +338,7 @@ class BindOverlay(object):
       rw_whitelist = {os.path.join(source_dir, p) for p in rw_whitelist}
 
     overlay_dirs = []
-    overlay_map = get_overlay_map(config_file)
+    overlay_map = cfg.get_overlay_map()
     for overlay_dir in overlay_map[target]:
       overlay_dir = os.path.join(source_dir, 'overlays', overlay_dir)
       overlay_dirs.append(overlay_dir)
@@ -347,7 +347,7 @@ class BindOverlay(object):
         source_dir, overlay_dirs, destination_dir, skip_subdirs, rw_whitelist)
 
     # If specified for this target, create a custom filesystem view
-    fs_view_map = get_fs_view_map(config_file)
+    fs_view_map = cfg.get_fs_view_map()
     if target in fs_view_map:
       for path_relative_from, path_relative_to in fs_view_map[target]:
         path_from = os.path.join(source_dir, path_relative_from)
@@ -363,108 +363,3 @@ class BindOverlay(object):
     self._overlay_dirs = overlay_dirs
     if not self._quiet:
       print('Applied overlays ' + ' '.join(self._overlay_dirs))
-
-def get_config(config_file):
-  """Parses the overlay configuration file.
-
-  Args:
-    config_file: A string path to the XML config file.
-
-  Returns:
-    A root config XML Element.
-    None if there is no config file.
-  """
-  config = None
-  if os.path.exists(config_file):
-    tree = ET.parse(config_file)
-    config = tree.getroot()
-  return config
-
-def get_rw_whitelist_map(config_file):
-  """Retrieves the map of allowed read-write paths for each target.
-
-  Args:
-    config_file: A string path to the XML config file.
-
-  Returns:
-    A dict of string lists of keyed by target name. Each value in the
-    dict is a list of allowed read-write paths corresponding to
-    the target.
-  """
-  rw_whitelist_map = {}
-  config = get_config(config_file)
-  # The presence of the config file is optional
-  if config:
-    for target in config.findall('target'):
-      name = target.get('name')
-      rw_whitelist = [a.get('path') for a in target.findall('allow_readwrite')]
-      rw_whitelist_map[name] = rw_whitelist
-
-  return rw_whitelist_map
-
-
-def get_overlay_map(config_file):
-  """Retrieves the map of overlays for each target.
-
-  Args:
-    config_file: A string path to the XML config file.
-
-  Returns:
-    A dict of keyed by target name. Each value in the
-    dict is a list of overlay names corresponding to
-    the target.
-  """
-  overlay_map = {}
-  config = get_config(config_file)
-  # The presence of the config file is optional
-  if config:
-    for target in config.findall('target'):
-      name = target.get('name')
-      overlay_list = [o.get('name') for o in target.findall('overlay')]
-      overlay_map[name] = overlay_list
-    # A valid configuration file is required
-    # to have at least one overlay target
-    if not overlay_map:
-      raise ValueError('Error: the overlay configuration file '
-          'is missing at least one overlay target')
-
-  return overlay_map
-
-def get_fs_view_map(config_file):
-  """Retrieves the map of filesystem views for each target.
-
-  Args:
-    config_file: A string path to the XML config file.
-
-  Returns:
-    A dict of filesystem views keyed by target name.
-    A filesystem view is a list of (source, destination)
-    string path tuples.
-  """
-  fs_view_map = {}
-  config = get_config(config_file)
-
-  # The presence of the config file is optional
-  if config:
-    # A valid config file is not required to
-    # include FS Views, only overlay targets
-    views = {}
-    for view in config.findall('view'):
-      name = view.get('name')
-      paths = []
-      for path in view.findall('path'):
-        paths.append((
-              path.get('source'),
-              path.get('destination')))
-      views[name] = paths
-
-    for target in config.findall('target'):
-      target_name = target.get('name')
-      view_paths = []
-      for view in target.findall('view'):
-        view_paths.extend(views[view.get('name')])
-
-      if view_paths:
-        fs_view_map[target_name] = view_paths
-
-  return fs_view_map
