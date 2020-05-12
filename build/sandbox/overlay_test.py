@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from . import config
 from . import overlay
 import re
 
@@ -90,7 +91,7 @@ class BindOverlayTest(unittest.TestCase):
         )
       test_config.flush()
       o = overlay.BindOverlay(
-          config_file=test_config.name,
+          cfg=config.factory(test_config.name),
           target='unittest',
           source_dir=self.source_dir)
     self.assertIsNotNone(o)
@@ -112,7 +113,7 @@ class BindOverlayTest(unittest.TestCase):
         )
       test_config.flush()
       o = overlay.BindOverlay(
-          config_file=test_config.name,
+          cfg=config.factory(test_config.name),
           target='unittest',
           source_dir=self.source_dir)
     self.assertIsNotNone(o)
@@ -141,7 +142,7 @@ class BindOverlayTest(unittest.TestCase):
         )
       test_config.flush()
       o = overlay.BindOverlay(
-          config_file=test_config.name,
+          cfg=config.factory(test_config.name),
           target='unittest',
           source_dir=self.source_dir)
     self.assertIsNotNone(o)
@@ -170,7 +171,7 @@ class BindOverlayTest(unittest.TestCase):
         )
       test_config.flush()
       o = overlay.BindOverlay(
-          config_file=test_config.name,
+          cfg=config.factory(test_config.name),
           target='unittest',
           source_dir=self.source_dir,
           destination_dir=self.destination_dir)
@@ -196,7 +197,7 @@ class BindOverlayTest(unittest.TestCase):
         )
       test_config.flush()
       o = overlay.BindOverlay(
-          config_file=test_config.name,
+          cfg=config.factory(test_config.name),
           target='unittest',
           source_dir=self.source_dir)
     self.assertIsNotNone(o)
@@ -221,7 +222,7 @@ class BindOverlayTest(unittest.TestCase):
           )
       test_config.flush()
       o = overlay.BindOverlay(
-          config_file=test_config.name,
+          cfg=config.factory(test_config.name),
           target='unittest',
           source_dir=self.source_dir)
     self.assertIsNotNone(o)
@@ -243,7 +244,7 @@ class BindOverlayTest(unittest.TestCase):
       test_config.flush()
       with self.assertRaises(KeyError):
         overlay.BindOverlay(
-            config_file=test_config.name,
+            cfg=config.factory(test_config.name),
             target='unknown',
             source_dir=self.source_dir)
 
