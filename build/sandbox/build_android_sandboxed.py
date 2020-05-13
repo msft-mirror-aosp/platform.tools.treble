@@ -68,63 +68,6 @@ def build(android_target, variant, nsjail_bin, chroot, dist_dir, build_id,
       readonly_bind_mounts=readonly_bind_mounts)
 
 
-def merge(qssi_target,
-          variant,
-          nsjail_bin,
-          chroot,
-          dist_dir,
-          build_id,
-          max_cpus,
-          merge_command,
-          overlay_config=None,
-          readonly_bind_mount=None,
-          extra_bind_mounts=[]):
-  """Runs a merge command in a secure sandbox.
-
-  Args:
-    qssi_target: A string with the qssi target
-    variant: A string with the build variant.
-    nsjail_bin: A string with the path to the nsjail binary.
-    chroot: A string with the path to the chroot of the NsJail sandbox.
-    overlay_config: A string path to an overlay configuration file.
-    dist_dir: A string with the path to the Android dist directory.
-    build_id: A string with the Android build identifier.
-    max_cpus: An integer with maximum number of CPUs.
-    merge_command: The command string to run inside the nsjail to perform the
-      merge.
-    extra_bind_mounts: A list of strings that contain extra mounts for nsjail.
-
-  Returns:
-    A list of commands that were executed. Each command is a list of strings.
-  """
-  # All builds are required to run with the root of the
-  # Android source tree as the current directory.
-  source_dir = os.getcwd()
-  command = [
-      '/src/tools/treble/build/sandbox/build_android_target.sh',
-      '%s-%s' % (qssi_target, variant),
-      '/src',
-      merge_command,
-  ]
-
-  readonly_bind_mounts = []
-  if readonly_bind_mount:
-    readonly_bind_mounts = [readonly_bind_mount]
-
-  return nsjail.run(
-      nsjail_bin=nsjail_bin,
-      chroot=chroot,
-      overlay_config=overlay_config,
-      source_dir=source_dir,
-      command=command,
-      android_target=qssi_target,
-      dist_dir=dist_dir,
-      build_id=build_id,
-      max_cpus=max_cpus,
-      readonly_bind_mounts=readonly_bind_mounts,
-      extra_bind_mounts=extra_bind_mounts)
-
-
 def arg_parser():
   """Returns an ArgumentParser for sanboxed android builds."""
   # Use the top level module docstring for the help description
