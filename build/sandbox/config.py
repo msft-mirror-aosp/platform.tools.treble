@@ -16,6 +16,69 @@
 
 import xml.etree.ElementTree as ET
 
+# The config file must be in XML with a structure as descibed below.
+#
+# The top level config element shall contain one or more "target" child elements.
+# Each of these conrresponds to a different Android "lunch" build configuration
+# target.
+#
+# Each "target" may contain the following:
+#
+# Properties:
+#
+#   name: The name of the target.
+#
+# Child elements:
+#
+#   fast_merge_config: The configuration options for fast merge.
+#
+#     Properties:
+#
+#       framework_images: Comma-separated list of image names that
+#         should come from the framework build.
+#
+#       misc_info_keys: A path to the newline-separated config file containing
+#       keys to obtain from the framework instance of misc_info.txt, used for
+#       creating vbmeta.img.
+#
+#   overlay: An overlay to be mounted while building the target.
+#
+#     Properties:
+#
+#       name: The name of the overlay.
+#
+#   view: A map (optionally) specifying a filesystem view mapping for each
+#     target.
+#
+#     Properties:
+#
+#       name: The name of the view.
+#
+#   allow_readwrite: A folder to mount read/write
+#   inside the Android build nsjail. Each allowed read-write entry should be
+#   accompanied by a bug that indicates why it was required and tracks the
+#   progress to a fix.
+#
+#     Properties:
+#
+#       path: The path to be allowed read-write mounting.
+#
+#   build_config: A list of goals to be used while building the target.
+#
+#     Properties:
+#
+#       name: The name of the build config. Defaults to the target name
+#         if not set.
+#
+#     Child elements:
+#
+#       goal: A build goal.
+#
+#         Properties:
+#
+#           name: The name of the build goal. Below are described some
+#             build goals that are common to most targets.
+
 def _get_build_config_map(config):
   """Retrieves a map of all build config.
 
