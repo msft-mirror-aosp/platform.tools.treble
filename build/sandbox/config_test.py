@@ -38,6 +38,30 @@ _TEST_CONFIG_XML = """<config>
 </config>
 """
 
+_TEST_CONTEXTS_CONFIG_XML = """<config>
+  <target name="test_target">
+    <build_config>
+
+      <!-- no contexts attribute: always selected -->
+      <goal name="droid"/>
+
+      <!-- empty contexts attribute: always selected -->
+      <goal name="always" contexts=""/>
+
+      <!-- selected if ci context requested -->
+      <goal name="dist" contexts="ci"/>
+
+      <!-- selected if x context requested -->
+      <goal name="VAR=value" contexts="x"/>
+
+      <!-- selected if ci or x context requested -->
+      <goal name="extra_goal" contexts="ci,x"/>
+
+    </build_config>
+  </target>
+</config>
+"""
+
 class ConfigTest(unittest.TestCase):
   """unittest for Config."""
 
@@ -88,19 +112,61 @@ class ConfigTest(unittest.TestCase):
 
       # Test that build_target android_target_1 has goals droid and dist.
       self.assertEqual(
-          cfg.get_build_config_build_goals('android_target_1'),
+          cfg.get_build_goals('android_target_1'),
           ['droid', 'dist'])
 
       # Test that build_target android_target_2 has goals droid, dist, and
       # goal_for_android_target_2.
       self.assertEqual(
-          cfg.get_build_config_build_goals('android_target_2'),
+          cfg.get_build_goals('android_target_2'),
           ['droid', 'dist', 'goal_for_android_target_2'])
 
       # Test that build_target build_target_2 has goals droid and VAR=a.
       self.assertEqual(
-          cfg.get_build_config_build_goals('build_target_2'),
+          cfg.get_build_goals('build_target_2'),
           ['droid', 'VAR=a'])
+
+  def testBuildTargetToBuildGoalsWithContexts(self):
+    with tempfile.NamedTemporaryFile('w+t') as test_config:
+      test_config.write(_TEST_CONTEXTS_CONFIG_XML)
+      test_config.flush()
+      cfg = config.factory(test_config.name)
+
+      # Test that when contexts is the default (empty), we select only the
+      # "always" goals.
+
+      build_goals = cfg.get_build_goals('test_target')
+      self.assertEqual(build_goals, ['droid', 'always'])
+
+      # Test that when contexts is explicitly empty, we select only the
+      # "always" goals.
+
+      build_goals = cfg.get_build_goals('test_target', set())
+      self.assertEqual(build_goals, ['droid', 'always'])
+
+      # Similarly, test that when contexts is doesn't match any goal_contexts,
+      # we select only the "always" goals.
+
+      build_goals = cfg.get_build_goals('test_target', set('no_matchy'))
+      self.assertEqual(build_goals, ['droid', 'always'])
+
+      # Test that when contexts is set(['x']), we select the "always" goals and
+      # the x goals.
+
+      build_goals = cfg.get_build_goals('test_target', set(['x']))
+
+      self.assertEqual(
+          build_goals,
+          ['droid', 'always', 'VAR=value', 'extra_goal'])
+
+      # Test that when requested_contexts is set(['ci', 'x']), we select the
+      # "always" goals, the ci goals, and the x goals.
+
+      build_goals = cfg.get_build_goals('test_target', set(['ci', 'x']))
+
+      self.assertEqual(
+          build_goals,
+          ['droid', 'always', 'dist', 'VAR=value', 'extra_goal'])
 
 
 if __name__ == '__main__':
