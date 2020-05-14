@@ -109,6 +109,13 @@ def arg_parser():
       type=int,
       help='Limit of concurrent CPU cores that the NsJail sanbox '
       'can use.')
+  parser.add_argument(
+      '--context',
+      action='append',
+      # TODO(b/156421475) remove this default.
+      default=['ci'],
+      help='One or more contexts used to select build goals from the '
+      'configuration.')
   return parser
 
 
@@ -153,7 +160,7 @@ def main():
 
   cfg = config.Config(args['overlay_config'])
   android_target = cfg.get_build_config_android_target(args['build_target'])
-  build_goals = cfg.get_build_config_build_goals(args['build_target'])
+  build_goals = cfg.get_build_goals(args['build_target'], set(args['context']))
 
   build(
       android_target=android_target,

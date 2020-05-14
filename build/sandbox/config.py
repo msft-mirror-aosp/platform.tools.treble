@@ -18,9 +18,9 @@ import xml.etree.ElementTree as ET
 
 # The config file must be in XML with a structure as descibed below.
 #
-# The top level config element shall contain one or more "target" child elements.
-# Each of these conrresponds to a different Android "lunch" build configuration
-# target.
+# The top level config element shall contain one or more "target" child
+# elements. Each of these conrresponds to a different Android "lunch" build
+# configuration target.
 #
 # Each "target" may contain the following:
 #
@@ -79,6 +79,33 @@ import xml.etree.ElementTree as ET
 #           name: The name of the build goal. Below are described some
 #             build goals that are common to most targets.
 
+
+def _get_build_config_goals(build_config):
+  """Retrieves goals from build_config.
+
+  Args:
+    build_config: An build_config xml element.
+
+  Returns:
+    A list of tuples where the first element of the tuple is the build goal
+    name, and the second is a list of the contexts to which this goal applies.
+  """
+  goals = []
+
+  for goal in build_config.findall('goal'):
+    goal_name = goal.get('name')
+    goal_contexts = goal.get('contexts')
+
+    if goal_contexts:
+      goal_contexts = set(goal_contexts.split(','))
+      if goal_contexts:
+        goals.append((goal_name, goal_contexts))
+    else:
+      goals.append((goal_name, set()))
+
+  return goals
+
+
 def _get_build_config_map(config):
   """Retrieves a map of all build config.
 
@@ -96,7 +123,7 @@ def _get_build_config_map(config):
     for build_config in target.findall('build_config'):
       # The build config name defaults to the target name
       build_config_name = build_config.get('name') or target_name
-      goal_list = [g.get('name') for g in build_config.findall('goal')]
+      goal_list = _get_build_config_goals(build_config)
       # A valid build_config is required to have at least one overlay target.
       if not goal_list:
         raise ValueError(
@@ -227,15 +254,59 @@ class Config:
     """
     return self._build_config_map[build_target]['android_target']
 
-  def get_build_config_build_goals(self, build_target):
-    """Given a build_target, return build goals.
+  def get_build_goals(self, build_target, contexts=None):
+    """Given a build_target and a context, return a list of build goals.
+
+    For a given build_target, we may build in a variety of contexts. For
+    example we might build in continuous integration, or we might build
+    locally, or other contexts defined by the configuration file and scripts
+    that use it. The contexts parameter is a set of strings that specify the
+    contexts for which this function should retrieve goals.
+
+    In the configuration file, each goal has a contexts attribute, which
+    specifies the contexts to which the goal applies. We treat a goal with no
+    contexts attribute as applying to all contexts.
+
+    Example:
+
+      <build_config>
+        <goal name="droid"/>
+        <goal name="dist" contexts="ota"/>
+      </build_config>
+
+      Here we have the goal "droid", which matches all contexts, and the goal
+      "dist", which matches the "ota" context. Invoking this method with the
+      set(['ota']) would return ['droid', 'dist'].
 
     Args:
       build_target: A string build_target to be queried.
+      context: A set of contexts for which to retrieve goals.
+
     Returns:
       A list of strings, where each string is a goal to be passed to make.
     """
-    return self._build_config_map[build_target]['build_goals']
+    build_goals = []
+
+    if contexts is None:
+      contexts = set()
+
+    for build_goal in self._build_config_map[build_target]['build_goals']:
+
+      # build_goal is a tuple of (name, contexts), where name is the string
+      # name of the of goal to be passed to make, and contexts is a set use to
+      # match the requested contexts.
+
+      if build_goal[1]:
+        # If we have a non-empty contexts set attached to the goal, include the
+        # goal only if the caller requested the context.
+        if contexts & build_goal[1]:
+          build_goals.append(build_goal[0])
+      else:
+        # If there is an empty contexts set attached to the goal, always
+        # included the goal.
+        build_goals.append(build_goal[0])
+
+    return build_goals
 
   def get_rw_whitelist_map(self):
     """Return read-write whitelist map.
