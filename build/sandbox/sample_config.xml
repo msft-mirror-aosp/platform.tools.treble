@@ -1,0 +1,12 @@
+<?xml version = "1.0" encoding = "UTF-8" ?>
+<!--
+Defines sample build configuration file.
+-->
+<config>
+  <target name="aosp_cf_x86_phone">
+    <build_config>
+      <goal name="droid"/>
+      <goal name="dist"/>
+    </build_config>
+  </target>
+</config>
