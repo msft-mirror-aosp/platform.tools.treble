@@ -24,7 +24,7 @@ _TEST_CONFIG_XML = """<config>
       <goal name="dist"/>
     </build_config>
   </target>
-  <target name="android_target_2">
+  <target name="android_target_2" tags="cool,hot">
     <build_config>
       <goal name="droid"/>
       <goal name="dist"/>
@@ -33,6 +33,11 @@ _TEST_CONFIG_XML = """<config>
     <build_config name="build_target_2">
       <goal name="droid"/>
       <goal name="VAR=a"/>
+    </build_config>
+  </target>
+  <target name="android_target_3" tags="">
+    <build_config>
+      <goal name="droid"/>
     </build_config>
   </target>
 </config>
@@ -76,12 +81,40 @@ class ConfigTest(unittest.TestCase):
       cfg = config.factory(test_config.name)
       self.assertEqual(
           cfg.get_available_build_targets(),
-          # Sorted, not lexical.
+          # Sorted; not in document order.
           [
               'android_target_1',
               'android_target_2',
+              'android_target_3',
               'build_target_2',
           ])
+
+  def testBuildTargetTags(self):
+    with tempfile.NamedTemporaryFile('w+t') as test_config:
+      test_config.write(_TEST_CONFIG_XML)
+      test_config.flush()
+      cfg = config.factory(test_config.name)
+
+      self.assertEqual(cfg.get_tags('android_target_1'), set())
+      self.assertEqual(cfg.get_tags('android_target_2'), set(['cool', 'hot']))
+      self.assertEqual(cfg.get_tags('build_target_2'), set(['cool', 'hot']))
+      self.assertEqual(cfg.get_tags('android_target_3'), set())
+
+      self.assertFalse(cfg.has_tag('android_target_1', 'cool'))
+      self.assertFalse(cfg.has_tag('android_target_1', 'hot'))
+      self.assertFalse(cfg.has_tag('android_target_1', 'meh'))
+
+      self.assertTrue(cfg.has_tag('android_target_2', 'cool'))
+      self.assertTrue(cfg.has_tag('android_target_2', 'hot'))
+      self.assertFalse(cfg.has_tag('android_target_2', 'meh'))
+
+      self.assertTrue(cfg.has_tag('build_target_2', 'cool'))
+      self.assertTrue(cfg.has_tag('build_target_2', 'hot'))
+      self.assertFalse(cfg.has_tag('build_target_2', 'meh'))
+
+      self.assertFalse(cfg.has_tag('android_target_3', 'cool'))
+      self.assertFalse(cfg.has_tag('android_target_3', 'hot'))
+      self.assertFalse(cfg.has_tag('android_target_3', 'meh'))
 
   def testBuildTargetToAndroidTarget(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
