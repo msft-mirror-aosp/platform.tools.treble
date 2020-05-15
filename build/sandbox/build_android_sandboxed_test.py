@@ -14,6 +14,7 @@
 """Test build_android_sandboxed."""
 
 import os
+import tempfile
 import unittest
 from . import build_android_sandboxed
 
@@ -46,6 +47,39 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
             '--bindmount', '/dist_dir:/dist',
             '--',
             '/src/tools/treble/build/sandbox/build_android_target.sh',
+            'target_name-userdebug',
+            '/src',
+            'make', '-j', 'droid', 'dist',
+        ]
+    )
+
+  def testBuildCommand(self):
+    build_android_sandboxed.nsjail.__file__ = '/'
+    os.chdir('/')
+    commands = build_android_sandboxed.build(
+        'target_name',
+        'userdebug',
+        nsjail_bin='/bin/true',
+        command_wrapper='/command/wrapper',
+        chroot='/chroot',
+        dist_dir='/dist_dir',
+        build_id='0',
+        max_cpus=1,
+        build_goals=['droid', 'dist'])
+
+    self.assertEqual(
+        commands,
+        [
+            '/bin/true',
+            '--env', 'USER=nobody',
+            '--config', '/nsjail.cfg',
+            '--env', 'BUILD_NUMBER=0',
+            '--max_cpus=1',
+            '--env', 'DIST_DIR=/dist',
+            '--bindmount', '/:/src',
+            '--bindmount', '/dist_dir:/dist',
+            '--',
+            '/command/wrapper',
             'target_name-userdebug',
             '/src',
             'make', '-j', 'droid', 'dist',

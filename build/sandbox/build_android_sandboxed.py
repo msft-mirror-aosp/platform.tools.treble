@@ -18,9 +18,13 @@ import os
 from . import config
 from . import nsjail
 
+_DEFAULT_COMMAND_WRAPPER = \
+  '/src/tools/treble/build/sandbox/build_android_target.sh'
+
 
 def build(android_target, variant, nsjail_bin, chroot, dist_dir, build_id,
           max_cpus, build_goals, overlay_config=None,
+          command_wrapper=_DEFAULT_COMMAND_WRAPPER,
           readonly_bind_mount=None):
   """Builds an Android target in a secure sandbox.
 
@@ -35,6 +39,7 @@ def build(android_target, variant, nsjail_bin, chroot, dist_dir, build_id,
     build_goals: A list of strings with the goals and options to provide to the
       build command.
     overlay_config: A string path to an overlay configuration file.
+    command_wrapper: A string path to the command wrapper.
     readonly_bind_mount: A string path to a path to be mounted as read-only.
 
   Returns:
@@ -44,7 +49,7 @@ def build(android_target, variant, nsjail_bin, chroot, dist_dir, build_id,
   # Android source tree as the current directory.
   source_dir = os.getcwd()
   command = [
-      '/src/tools/treble/build/sandbox/build_android_target.sh',
+      command_wrapper,
       '%s-%s' % (android_target, variant),
       '/src',
       'make',
@@ -92,6 +97,11 @@ def arg_parser():
       '--overlay_config',
       required=True,
       help='Path to the overlay configuration file.')
+  parser.add_argument(
+      '--command_wrapper',
+      default=_DEFAULT_COMMAND_WRAPPER,
+      help='Path to the command wrapper. '
+        'Defaults to \'%s\'.' % _DEFAULT_COMMAND_WRAPPER)
   parser.add_argument(
       '--readonly_bind_mount',
       help='Path to the a path to be mounted as readonly inside the secure '
@@ -168,6 +178,7 @@ def main():
       nsjail_bin=args['nsjail_bin'],
       chroot=args['chroot'],
       overlay_config=args['overlay_config'],
+      command_wrapper=args['command_wrapper'],
       readonly_bind_mount=args['readonly_bind_mount'],
       dist_dir=args['dist_dir'],
       build_id=args['build_id'],
