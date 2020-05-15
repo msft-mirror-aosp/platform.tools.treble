@@ -98,7 +98,7 @@ class BindOverlayTest(unittest.TestCase):
     bind_mounts = o.GetBindMounts()
     bind_source = os.path.join(self.source_dir, 'overlays/unittest1/from_dir')
     bind_destination = os.path.join(self.source_dir, 'from_dir')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, False))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
 
   def testMultipleOverlays(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
@@ -121,12 +121,12 @@ class BindOverlayTest(unittest.TestCase):
     bind_source = os.path.join(self.source_dir,
       'overlays/unittest1/upper_subdir/lower_subdir/from_unittest1')
     bind_destination = os.path.join(self.source_dir, 'upper_subdir/lower_subdir/from_unittest1')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, False))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
     bind_source = os.path.join(self.source_dir,
       'overlays/unittest2/upper_subdir/lower_subdir/from_unittest2')
     bind_destination = os.path.join(self.source_dir,
       'upper_subdir/lower_subdir/from_unittest2')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, False))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
 
   def testMultipleOverlaysWithWhitelist(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
@@ -179,7 +179,7 @@ class BindOverlayTest(unittest.TestCase):
     bind_mounts = o.GetBindMounts()
     bind_source = os.path.join(self.source_dir, 'overlays/unittest1/from_dir')
     bind_destination = os.path.join(self.destination_dir, 'from_dir')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, False))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
 
   def testValidFilesystemViewDirectoryBind(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
@@ -204,7 +204,7 @@ class BindOverlayTest(unittest.TestCase):
     bind_mounts = o.GetBindMounts()
     bind_source = os.path.join(self.source_dir, 'overlays/unittest1/from_dir')
     bind_destination = os.path.join(self.source_dir, 'to_dir')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, False))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
 
   def testValidFilesystemViewFileBind(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
@@ -229,7 +229,7 @@ class BindOverlayTest(unittest.TestCase):
     bind_mounts = o.GetBindMounts()
     bind_source = os.path.join(self.source_dir, 'overlays/unittest1/from_file')
     bind_destination = os.path.join(self.source_dir, 'to_file')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, False))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
 
   def testInvalidTarget(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:

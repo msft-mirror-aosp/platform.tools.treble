@@ -28,6 +28,13 @@ import xml.etree.ElementTree as ET
 #
 #   name: The name of the target.
 #
+#   allow_readwrite_all: "true" if the full source folder shall be mounted as
+#   read/write. It should be accompanied by a comment with the bug describing
+#   why it was required.
+#
+#   dynamic_partition_enabled: "true" if dynamic partitions are enabled on this
+#   target.
+#
 #   tags: A comma-separated list of strings to be associated with the target
 #     and any of its nested build_targets. You can use a tag to associate
 #     information with a target in your configuration file, and retrieve that
@@ -169,6 +176,23 @@ def _get_rw_whitelist_map(config):
 
   return rw_whitelist_map
 
+def _get_targets_allowed_readwrite(config):
+  """Retrieves the targets that should mount all their source as read-write.
+
+  Args:
+    config: An XML Element that is the root of the config XML tree.
+
+  Returns:
+    A list of string target names.
+  """
+  targets_allowed_readwrite = []
+  for target in config.findall('target'):
+    name = target.get('name')
+    if target.get('allow_readwrite_all') == 'true':
+      targets_allowed_readwrite.append(name)
+
+  return targets_allowed_readwrite
+
 
 def _get_overlay_map(config):
   """Retrieves the map of overlays for each target.
@@ -246,6 +270,7 @@ class Config:
     self._fs_view_map = _get_fs_view_map(config)
     self._overlay_map = _get_overlay_map(config)
     self._rw_whitelist_map = _get_rw_whitelist_map(config)
+    self._targets_allowed_readwrite = _get_targets_allowed_readwrite(config)
 
   def get_available_build_targets(self):
     """Return a list of available build targets."""
@@ -347,6 +372,17 @@ class Config:
       a list of allowed read-write paths corresponding to the target.
     """
     return self._rw_whitelist_map
+
+  def get_allow_readwrite_all(self, android_target):
+    """Return True if the target should mount all its source as read-write.
+
+    Args:
+      android_target: A string name of an Android target.
+
+    Returns:
+      True if the target should mount all its source as read-write.
+    """
+    return android_target in self._targets_allowed_readwrite
 
   def get_overlay_map(self):
     """Return the overlay map.
