@@ -28,6 +28,11 @@ import xml.etree.ElementTree as ET
 #
 #   name: The name of the target.
 #
+#   tags: A comma-separated list of strings to be associated with the target
+#     and any of its nested build_targets. You can use a tag to associate
+#     information with a target in your configuration file, and retrieve that
+#     information using the get_tags API or the has_tag API.
+#
 # Child elements:
 #
 #   fast_merge_config: The configuration options for fast merge.
@@ -76,15 +81,21 @@ import xml.etree.ElementTree as ET
 #
 #         Properties:
 #
-#           name: The name of the build goal. Below are described some
-#             build goals that are common to most targets.
+#           name: The name of the build goal. The build tools pass the name
+#             attribute as a parameter to make. This can have a value like
+#             "droid" or "VAR=value".
+#
+#           contexts: A comma-separated list of the contexts in which this
+#             goal applies. If this attribute is missing or blank, the goal
+#             applies to all contexts. Otherwise, it applies only in the
+#             requested contexts (see get_build_goals).
 
 
 def _get_build_config_goals(build_config):
   """Retrieves goals from build_config.
 
   Args:
-    build_config: An build_config xml element.
+    build_config: A build_config xml element.
 
   Returns:
     A list of tuples where the first element of the tuple is the build goal
@@ -113,13 +124,16 @@ def _get_build_config_map(config):
     config: An XML Element that is the root of the config XML tree.
 
   Returns:
-    A dict of build configs keyed by name. Each build config is itself a dict
-    with two items: an 'android_target' item with a string name, and a
-    'build_goals' item with list of string build goals.
+    A dict of build configs keyed by build_target. Each build config is itself
+    a dict with three items: an 'android_target' item with a string name of the
+    android_target to use for this build_target, a 'tags' item with a set of
+    the string tags, and a 'build_goals' item with list of build goals tuples.
   """
   build_config_map = {}
   for target in config.findall('target'):
     target_name = target.get('name')
+    tags = target.get('tags')
+    target_tags = set(tags.split(',')) if tags else set()
     for build_config in target.findall('build_config'):
       # The build config name defaults to the target name
       build_config_name = build_config.get('name') or target_name
@@ -131,6 +145,7 @@ def _get_build_config_map(config):
             build_config_name)
       build_config_map[build_config_name] = {
           'android_target': target_name,
+          'tags': target_tags,
           'build_goals': goal_list,
       }
   return build_config_map
@@ -235,6 +250,22 @@ class Config:
   def get_available_build_targets(self):
     """Return a list of available build targets."""
     return sorted(self._build_config_map.keys())
+
+  def get_tags(self, build_target):
+    """Given a build_target, return the (possibly empty) set of tags."""
+    return self._build_config_map[build_target]['tags']
+
+  def has_tag(self, build_target, tag):
+    """Return true if build_target has tag.
+
+    Args:
+      build_target: A string build_target to be queried.
+      tag: A string tag that this target may have.
+
+    Returns:
+      If the build_target has the tag, True. Otherwise, False.
+    """
+    return tag in self._build_config_map[build_target]['tags']
 
   def get_build_config_android_target(self, build_target):
     """Given a build_target, return an android_target.
