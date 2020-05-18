@@ -122,8 +122,6 @@ def arg_parser():
   parser.add_argument(
       '--context',
       action='append',
-      # TODO(b/156421475) remove this default.
-      default=['ci'],
       help='One or more contexts used to select build goals from the '
       'configuration.')
   return parser
