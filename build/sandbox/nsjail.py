@@ -52,7 +52,6 @@ def run(command,
         chroot,
         overlay_config=None,
         source_dir=os.getcwd(),
-        out_dirname_for_whiteout=None,
         dist_dir=None,
         build_id=None,
         out_dir = None,
@@ -78,9 +77,6 @@ def run(command,
     chroot: A string with the path to the chroot.
     overlay_config: A string path to an overlay configuration file.
     source_dir: A string with the path to the Android platform source.
-    out_dirname_for_whiteout: The optional name of the folder within
-      source_dir that is the Android build out folder *as seen from outside
-      the Docker container*.
     dist_dir: A string with the path to the dist directory.
     build_id: A string with the build identifier.
     out_dir: An optional path to the Android build out folder.
@@ -115,7 +111,6 @@ def run(command,
       chroot=chroot,
       cfg=config.factory(overlay_config),
       source_dir=source_dir,
-      out_dirname_for_whiteout=out_dirname_for_whiteout,
       dist_dir=dist_dir,
       build_id=build_id,
       out_dir=out_dir,
@@ -145,7 +140,6 @@ def get_command(command,
         chroot,
         cfg=None,
         source_dir=os.getcwd(),
-        out_dirname_for_whiteout=None,
         dist_dir=None,
         build_id=None,
         out_dir = None,
@@ -168,9 +162,6 @@ def get_command(command,
     chroot: A string with the path to the chroot.
     cfg: A config.Config instance or None.
     source_dir: A string with the path to the Android platform source.
-    out_dirname_for_whiteout: The optional name of the folder within
-      source_dir that is the Android build out folder *as seen from outside
-      the Docker container*.
     dist_dir: A string with the path to the dist directory.
     build_id: A string with the build identifier.
     out_dir: An optional path to the Android build out folder.
@@ -235,8 +226,6 @@ def get_command(command,
     nsjail_command.append('--quiet')
 
   whiteout_list = set()
-  if out_dirname_for_whiteout:
-    whiteout_list.add(os.path.join(source_dir, out_dirname_for_whiteout))
   if out_dir and (
       os.path.dirname(out_dir) == source_dir) and (
       os.path.basename(out_dir) != 'out'):
@@ -391,18 +380,6 @@ def parse_args():
       'the Android build. This path must be relative to meta_root_dir. '
       'Defaults to \'%s\'' % _DEFAULT_META_ANDROID_DIR)
   parser.add_argument(
-      '--out_dirname_for_whiteout',
-      help='The optional name of the folder within source_dir that is the '
-      'Android build out folder *as seen from outside the Docker '
-      'container*.')
-  parser.add_argument(
-      '--whiteout',
-      action='append',
-      default=[],
-      help='Optional glob filter of directories to add to the whiteout. The '
-      'directories will not appear in the container. '
-      'Can be specified multiple times.')
-  parser.add_argument(
       '--command',
       default=_DEFAULT_COMMAND,
       help='Command to run after entering the NsJail.'
@@ -480,7 +457,6 @@ def run_with_args(args):
       source_dir=args.source_dir,
       command=args.command.split(),
       android_target=args.android_target,
-      out_dirname_for_whiteout=args.out_dirname_for_whiteout,
       dist_dir=args.dist_dir,
       build_id=args.build_id,
       out_dir=args.out_dir,
