@@ -78,7 +78,7 @@ class BindOverlay(object):
     return conflict_path
 
   def _AddOverlay(self, overlay_dir, intermediate_work_dir, skip_subdirs,
-                  destination_dir, rw_whitelist):
+                  destination_dir, allowed_read_write):
     """Adds a single overlay directory.
 
     Args:
@@ -88,8 +88,8 @@ class BindOverlay(object):
       skip_subdirs: A set of string paths to skip from overlaying.
       destination_dir: A string with the path to the source with the overlays
         applied to it.
-      rw_whitelist: An optional set of source paths to bind mount with
-        read/write access.
+      allowed_read_write: A function returns true if the path input should
+        be allowed read/write access.
     """
     # Traverse the overlay directory twice
     # The first pass only process git projects
@@ -115,7 +115,7 @@ class BindOverlay(object):
         # so just bind mount it
         del subdirs[:]
 
-        if rw_whitelist is None or current_dir_origin in rw_whitelist:
+        if allowed_read_write(current_dir_origin):
           self._AddBindMount(current_dir_origin, current_dir_destination, False)
         else:
           self._AddBindMount(current_dir_origin, current_dir_destination, True)
@@ -158,7 +158,7 @@ class BindOverlay(object):
         for file in files:
           file_origin = os.path.join(current_dir_origin, file)
           file_destination = os.path.join(current_dir_destination, file)
-          if rw_whitelist is None or file_origin in rw_whitelist:
+          if allowed_read_write(file_origin):
             self._AddBindMount(file_origin, file_destination, False)
           else:
             self._AddBindMount(file_origin, file_destination, True)
@@ -167,7 +167,7 @@ class BindOverlay(object):
         # The current dir does not have any git projects to it can be bind
         # mounted wholesale
         del subdirs[:]
-        if rw_whitelist is None or current_dir_origin in rw_whitelist:
+        if allowed_read_write(current_dir_origin):
           self._AddBindMount(current_dir_origin, current_dir_destination, False)
         else:
           self._AddBindMount(current_dir_origin, current_dir_destination, True)
@@ -209,7 +209,7 @@ class BindOverlay(object):
     return skip_subdirs
 
   def _AddOverlays(self, source_dir, overlay_dirs, destination_dir,
-                   skip_subdirs, rw_whitelist):
+                   skip_subdirs, allowed_read_write):
     """Add the selected overlay directories.
 
     Args:
@@ -219,8 +219,8 @@ class BindOverlay(object):
       destination_dir: A string with the path to the source where the overlays
         will be applied.
       skip_subdirs: A set of string paths to be skipped from overlays.
-      rw_whitelist: An optional set of source paths to bind mount with
-        read/write access.
+      allowed_read_write: A function returns true if the path input should
+        be allowed read/write access.
     """
 
     # Create empty intermediate workdir
@@ -244,7 +244,7 @@ class BindOverlay(object):
 
     for overlay_dir in overlay_dirs:
       self._AddOverlay(overlay_dir, intermediate_work_dir,
-                       skip_subdirs, destination_dir, rw_whitelist)
+                       skip_subdirs, destination_dir, allowed_read_write)
 
 
   def _AddBindMount(self, source_dir, destination_dir, readonly=False):
@@ -295,6 +295,35 @@ class BindOverlay(object):
     """
     return self._bind_mounts
 
+  def _GetReadWriteFunction(self, target, source_dir, cfg):
+    """Returns a function that tells you how to mount a path.
+
+    Args:
+      target: A string with the name of the target to be prepared.
+      source_dir: A string with the path to the Android platform source.
+      cfg: A config.Config instance.
+
+    Returns:
+      A function that takes a string path as an input and returns
+      True if the path should be mounted read-write or False if
+      the path should be mounted read-only.
+    """
+
+    # The read/write whitelist provides paths relative to the source dir. It
+    # needs to be updated with absolute paths to make lookup possible.
+    rw_whitelist = []
+    rw_whitelist_map = cfg.get_rw_whitelist_map()
+    if target in rw_whitelist_map and rw_whitelist_map[target]:
+      rw_whitelist = rw_whitelist_map[target]
+    rw_whitelist = {os.path.join(source_dir, p) for p in rw_whitelist}
+
+    allow_readwrite_all = cfg.get_allow_readwrite_all(target)
+
+    def AllowReadWrite(path):
+      return allow_readwrite_all or path in rw_whitelist
+
+    return AllowReadWrite
+
   def __init__(self,
                target,
                source_dir,
@@ -328,14 +357,7 @@ class BindOverlay(object):
     # seems appropriate
     skip_subdirs = set(whiteout_list)
 
-    # The read/write whitelist provides paths relative to the source dir. It
-    # needs to be updated with absolute paths to make lookup possible.
-    rw_whitelist_map = cfg.get_rw_whitelist_map()
-    rw_whitelist = None
-    if target in rw_whitelist_map and rw_whitelist_map[target]:
-      rw_whitelist = rw_whitelist_map[target]
-    if rw_whitelist:
-      rw_whitelist = {os.path.join(source_dir, p) for p in rw_whitelist}
+    allowed_read_write = self._GetReadWriteFunction(target, source_dir, cfg)
 
     overlay_dirs = []
     overlay_map = cfg.get_overlay_map()
@@ -344,7 +366,7 @@ class BindOverlay(object):
       overlay_dirs.append(overlay_dir)
 
     self._AddOverlays(
-        source_dir, overlay_dirs, destination_dir, skip_subdirs, rw_whitelist)
+        source_dir, overlay_dirs, destination_dir, skip_subdirs, allowed_read_write)
 
     # If specified for this target, create a custom filesystem view
     fs_view_map = cfg.get_fs_view_map()
@@ -353,7 +375,7 @@ class BindOverlay(object):
         path_from = os.path.join(source_dir, path_relative_from)
         if os.path.isfile(path_from) or os.path.isdir(path_from):
           path_to = os.path.join(destination_dir, path_relative_to)
-          if rw_whitelist is None or path_from in rw_whitelist:
+          if allowed_read_write(path_from):
             self._AddBindMount(path_from, path_to, False)
           else:
             self._AddBindMount(path_from, path_to, True)
