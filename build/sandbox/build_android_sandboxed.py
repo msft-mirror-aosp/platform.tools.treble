@@ -23,7 +23,7 @@ _DEFAULT_COMMAND_WRAPPER = \
 
 
 def build(android_target, variant, nsjail_bin, chroot, dist_dir, build_id,
-          max_cpus, build_goals, overlay_config=None,
+          max_cpus, build_goals, config_file=None,
           command_wrapper=_DEFAULT_COMMAND_WRAPPER,
           readonly_bind_mount=None):
   """Builds an Android target in a secure sandbox.
@@ -38,7 +38,7 @@ def build(android_target, variant, nsjail_bin, chroot, dist_dir, build_id,
     max_cpus: An integer with maximum number of CPUs.
     build_goals: A list of strings with the goals and options to provide to the
       build command.
-    overlay_config: A string path to an overlay configuration file.
+    config_file: A string path to an overlay configuration file.
     command_wrapper: A string path to the command wrapper.
     readonly_bind_mount: A string path to a path to be mounted as read-only.
 
@@ -63,7 +63,7 @@ def build(android_target, variant, nsjail_bin, chroot, dist_dir, build_id,
   return nsjail.run(
       nsjail_bin=nsjail_bin,
       chroot=chroot,
-      overlay_config=overlay_config,
+      overlay_config=config_file,
       source_dir=source_dir,
       command=command,
       android_target=android_target,
@@ -94,6 +94,9 @@ def arg_parser():
       'platform. This will be mounted as the root filesystem in the '
       'NsJail sandbox.')
   parser.add_argument(
+      '--config_file',
+      # The old name is deprecated. We'll temporarily keep it
+      # until the systems that use the old name are updated.
       '--overlay_config',
       required=True,
       help='Path to the overlay configuration file.')
@@ -166,7 +169,7 @@ def main():
   if args['build_target'] is None:
     raise ValueError('--build_target is required.')
 
-  cfg = config.Config(args['overlay_config'])
+  cfg = config.Config(args['config_file'])
   android_target = cfg.get_build_config_android_target(args['build_target'])
   build_goals = cfg.get_build_goals(args['build_target'], set(args['context']))
 
@@ -175,7 +178,7 @@ def main():
       variant=args['variant'],
       nsjail_bin=args['nsjail_bin'],
       chroot=args['chroot'],
-      overlay_config=args['overlay_config'],
+      config_file=args['config_file'],
       command_wrapper=args['command_wrapper'],
       readonly_bind_mount=args['readonly_bind_mount'],
       dist_dir=args['dist_dir'],
