@@ -201,6 +201,29 @@ class ConfigTest(unittest.TestCase):
           build_goals,
           ['droid', 'always', 'dist', 'VAR=value', 'extra_goal'])
 
+  def testAllowReadWriteAll(self):
+    with tempfile.NamedTemporaryFile('w+t') as test_config:
+      test_config.write(
+        '<?xml version="1.0" encoding="UTF-8" ?>'
+        '<config>'
+        '  <target name="target_allowed" allow_readwrite_all="true">'
+        '    <allow_readwrite_all/>'
+        '  </target>'
+        '  <target name="target_not_allowed">'
+        '  </target>'
+        '  <target name="target_also_not_allowed" allow_readwrite_all="false">'
+        '  </target>'
+        '</config>'
+        )
+      test_config.flush()
+      cfg = config.factory(test_config.name)
+
+      self.assertTrue(cfg.get_allow_readwrite_all('target_allowed'))
+
+      self.assertFalse(cfg.get_allow_readwrite_all('target_not_allowed'))
+
+      self.assertFalse(cfg.get_allow_readwrite_all('target_also_not_allowed'))
+
 
 if __name__ == '__main__':
   unittest.main()
