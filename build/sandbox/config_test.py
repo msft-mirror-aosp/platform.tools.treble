@@ -224,6 +224,31 @@ class ConfigTest(unittest.TestCase):
 
       self.assertFalse(cfg.get_allow_readwrite_all('target_also_not_allowed'))
 
+  def testAllowedProjectsFile(self):
+    with tempfile.NamedTemporaryFile('w+t') as test_config:
+      test_config.write(
+        '<?xml version="1.0" encoding="UTF-8" ?>'
+        '<config>'
+        '  <target name="target_name">'
+        '    <build_config allowed_projects_file="path/to/default/build/config/allowed_projects.xml">'
+        '      <goal name="build_goal"/>'
+        '    </build_config>'
+        '    <build_config name="has_allowed_projects_file" allowed_projects_file="path/to/named/build/config/allowed_projects.xml">'
+        '      <goal name="build_goal"/>'
+        '    </build_config>'
+        '    <build_config name="no_allowed_projects_file">'
+        '      <goal name="build_goal"/>'
+        '    </build_config>'
+        '  </target>'
+        '</config>'
+        )
+      test_config.flush()
+      cfg = config.factory(test_config.name)
+
+      self.assertEqual(cfg.get_allowed_projects_file('target_name'), 'path/to/default/build/config/allowed_projects.xml')
+      self.assertEqual(cfg.get_allowed_projects_file('has_allowed_projects_file'), 'path/to/named/build/config/allowed_projects.xml')
+      self.assertIsNone(cfg.get_allowed_projects_file('no_allowed_projects_file'))
+
 
 if __name__ == '__main__':
   unittest.main()
