@@ -86,13 +86,16 @@ class BindOverlayTest(unittest.TestCase):
         '<config>'
         '  <target name="unittest">'
         '    <overlay name="unittest1"/>'
+        '    <build_config>'
+        '      <goal name="goal_name"/>'
+        '    </build_config>'
         '  </target>'
         '</config>'
         )
       test_config.flush()
       o = overlay.BindOverlay(
           cfg=config.factory(test_config.name),
-          target='unittest',
+          build_target='unittest',
           source_dir=self.source_dir)
     self.assertIsNotNone(o)
     bind_mounts = o.GetBindMounts()
@@ -108,13 +111,16 @@ class BindOverlayTest(unittest.TestCase):
         '  <target name="unittest">'
         '    <overlay name="unittest1"/>'
         '    <overlay name="unittest2"/>'
+        '    <build_config>'
+        '      <goal name="goal_name"/>'
+        '    </build_config>'
         '  </target>'
         '</config>'
         )
       test_config.flush()
       o = overlay.BindOverlay(
           cfg=config.factory(test_config.name),
-          target='unittest',
+          build_target='unittest',
           source_dir=self.source_dir)
     self.assertIsNotNone(o)
     bind_mounts = o.GetBindMounts()
@@ -137,13 +143,16 @@ class BindOverlayTest(unittest.TestCase):
         '    <overlay name="unittest1"/>'
         '    <overlay name="unittest2"/>'
         '    <allow_readwrite path="overlays/unittest1/upper_subdir/lower_subdir/from_unittest1"/>'
+        '    <build_config>'
+        '      <goal name="goal_name"/>'
+        '    </build_config>'
         '  </target>'
         '</config>'
         )
       test_config.flush()
       o = overlay.BindOverlay(
           cfg=config.factory(test_config.name),
-          target='unittest',
+          build_target='unittest',
           source_dir=self.source_dir)
     self.assertIsNotNone(o)
     bind_mounts = o.GetBindMounts()
@@ -166,13 +175,16 @@ class BindOverlayTest(unittest.TestCase):
         '<config>'
         '  <target name="unittest">'
         '    <overlay name="unittest1"/>'
+        '    <build_config>'
+        '      <goal name="goal_name"/>'
+        '    </build_config>'
         '  </target>'
         '</config>'
         )
       test_config.flush()
       o = overlay.BindOverlay(
           cfg=config.factory(test_config.name),
-          target='unittest',
+          build_target='unittest',
           source_dir=self.source_dir,
           destination_dir=self.destination_dir)
     self.assertIsNotNone(o)
@@ -188,6 +200,9 @@ class BindOverlayTest(unittest.TestCase):
         '<config>'
         '  <target name="unittest">'
         '    <view name="unittestview"/>'
+        '    <build_config>'
+        '      <goal name="goal_name"/>'
+        '    </build_config>'
         '  </target>'
         '  <view name="unittestview">'
         '    <path source="overlays/unittest1/from_dir" '
@@ -198,7 +213,7 @@ class BindOverlayTest(unittest.TestCase):
       test_config.flush()
       o = overlay.BindOverlay(
           cfg=config.factory(test_config.name),
-          target='unittest',
+          build_target='unittest',
           source_dir=self.source_dir)
     self.assertIsNotNone(o)
     bind_mounts = o.GetBindMounts()
@@ -213,6 +228,9 @@ class BindOverlayTest(unittest.TestCase):
           '<config>'
           '  <target name="unittest">'
           '    <view name="unittestview"/>'
+          '    <build_config>'
+          '      <goal name="goal_name"/>'
+          '    </build_config>'
           '  </target>'
           '  <view name="unittestview">'
           '    <path source="overlays/unittest1/from_file" '
@@ -223,7 +241,7 @@ class BindOverlayTest(unittest.TestCase):
       test_config.flush()
       o = overlay.BindOverlay(
           cfg=config.factory(test_config.name),
-          target='unittest',
+          build_target='unittest',
           source_dir=self.source_dir)
     self.assertIsNotNone(o)
     bind_mounts = o.GetBindMounts()
@@ -238,6 +256,9 @@ class BindOverlayTest(unittest.TestCase):
         '<config>'
         '  <target name="unittest">'
         '    <overlay name="unittest1"/>'
+        '    <build_config>'
+        '      <goal name="goal_name"/>'
+        '    </build_config>'
         '  </target>'
         '</config>'
         )
@@ -245,7 +266,7 @@ class BindOverlayTest(unittest.TestCase):
       with self.assertRaises(KeyError):
         overlay.BindOverlay(
             cfg=config.factory(test_config.name),
-            target='unknown',
+            build_target='unknown',
             source_dir=self.source_dir)
 
 
