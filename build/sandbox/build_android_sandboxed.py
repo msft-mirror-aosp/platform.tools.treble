@@ -125,6 +125,7 @@ def arg_parser():
   parser.add_argument(
       '--context',
       action='append',
+      default=[],
       help='One or more contexts used to select build goals from the '
       'configuration.')
   return parser
@@ -160,7 +161,6 @@ def build_target(android_target,
 
 def main():
   args = parse_args(arg_parser())
-  print(args)
 
   # The --build_target argument could not be required
   # using the standard 'required' argparse option because
