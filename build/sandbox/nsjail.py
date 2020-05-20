@@ -47,7 +47,7 @@ _CHROOT_MOUNT_POINTS = [
 
 
 def run(command,
-        android_target,
+        build_target,
         nsjail_bin,
         chroot,
         overlay_config=None,
@@ -71,7 +71,7 @@ def run(command,
 
   Args:
     command: A list of strings with the command to run.
-    android_target: A string with the name of the target to be prepared
+    build_target: A string with the name of the build target to be prepared
       inside the container.
     nsjail_bin: A string with the path to the nsjail binary.
     chroot: A string with the path to the chroot.
@@ -106,7 +106,7 @@ def run(command,
 
   nsjail_command = get_command(
       command=command,
-      android_target=android_target,
+      build_target=build_target,
       nsjail_bin=nsjail_bin,
       chroot=chroot,
       cfg=config.factory(overlay_config),
@@ -135,7 +135,7 @@ def run(command,
   return nsjail_command
 
 def get_command(command,
-        android_target,
+        build_target,
         nsjail_bin,
         chroot,
         cfg=None,
@@ -156,7 +156,7 @@ def get_command(command,
 
   Args:
     command: A list of strings with the command to run.
-    android_target: A string with the name of the target to be prepared
+    build_target: A string with the name of the build target to be prepared
       inside the container.
     nsjail_bin: A string with the path to the nsjail binary.
     chroot: A string with the path to the chroot.
@@ -236,7 +236,7 @@ def get_command(command,
   # Apply the overlay for the selected Android target to the source directory
   # from the supplied config.Config instance (which may be None).
   if cfg is not None:
-    overlay = BindOverlay(android_target,
+    overlay = BindOverlay(build_target,
                       source_dir,
                       cfg,
                       whiteout_list,
@@ -385,7 +385,7 @@ def parse_args():
       help='Command to run after entering the NsJail.'
       'If not set then an interactive Bash shell will be launched')
   parser.add_argument(
-      '--android_target',
+      '--build_target',
       required=True,
       help='Android target selected for building')
   parser.add_argument(
@@ -456,7 +456,7 @@ def run_with_args(args):
       overlay_config=args.overlay_config,
       source_dir=args.source_dir,
       command=args.command.split(),
-      android_target=args.android_target,
+      build_target=args.build_target,
       dist_dir=args.dist_dir,
       build_id=args.build_id,
       out_dir=args.out_dir,
