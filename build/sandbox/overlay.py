@@ -295,11 +295,11 @@ class BindOverlay(object):
     """
     return self._bind_mounts
 
-  def _GetReadWriteFunction(self, target, source_dir, cfg):
+  def _GetReadWriteFunction(self, android_target, source_dir, cfg):
     """Returns a function that tells you how to mount a path.
 
     Args:
-      target: A string with the name of the target to be prepared.
+      android_target: A string with the name of the android target to be prepared.
       source_dir: A string with the path to the Android platform source.
       cfg: A config.Config instance.
 
@@ -313,11 +313,11 @@ class BindOverlay(object):
     # needs to be updated with absolute paths to make lookup possible.
     rw_whitelist = []
     rw_whitelist_map = cfg.get_rw_whitelist_map()
-    if target in rw_whitelist_map and rw_whitelist_map[target]:
-      rw_whitelist = rw_whitelist_map[target]
+    if android_target in rw_whitelist_map and rw_whitelist_map[android_target]:
+      rw_whitelist = rw_whitelist_map[android_target]
     rw_whitelist = {os.path.join(source_dir, p) for p in rw_whitelist}
 
-    allow_readwrite_all = cfg.get_allow_readwrite_all(target)
+    allow_readwrite_all = cfg.get_allow_readwrite_all(android_target)
 
     def AllowReadWrite(path):
       return allow_readwrite_all or path in rw_whitelist
@@ -325,7 +325,7 @@ class BindOverlay(object):
     return AllowReadWrite
 
   def __init__(self,
-               target,
+               build_target,
                source_dir,
                cfg,
                whiteout_list = [],
@@ -334,7 +334,7 @@ class BindOverlay(object):
     """Inits Overlay with the details of what is going to be overlaid.
 
     Args:
-      target: A string with the name of the target to be prepared.
+      build_target: A string with the name of the build target to be prepared.
       source_dir: A string with the path to the Android platform source.
       cfg: A config.Config instance.
       whiteout_list: A list of directories to hide from the build system.
@@ -357,11 +357,13 @@ class BindOverlay(object):
     # seems appropriate
     skip_subdirs = set(whiteout_list)
 
-    allowed_read_write = self._GetReadWriteFunction(target, source_dir, cfg)
+    android_target = cfg.get_build_config_android_target(build_target)
+
+    allowed_read_write = self._GetReadWriteFunction(android_target, source_dir, cfg)
 
     overlay_dirs = []
     overlay_map = cfg.get_overlay_map()
-    for overlay_dir in overlay_map[target]:
+    for overlay_dir in overlay_map[android_target]:
       overlay_dir = os.path.join(source_dir, 'overlays', overlay_dir)
       overlay_dirs.append(overlay_dir)
 
@@ -370,8 +372,8 @@ class BindOverlay(object):
 
     # If specified for this target, create a custom filesystem view
     fs_view_map = cfg.get_fs_view_map()
-    if target in fs_view_map:
-      for path_relative_from, path_relative_to in fs_view_map[target]:
+    if android_target in fs_view_map:
+      for path_relative_from, path_relative_to in fs_view_map[android_target]:
         path_from = os.path.join(source_dir, path_relative_from)
         if os.path.isfile(path_from) or os.path.isdir(path_from):
           path_to = os.path.join(destination_dir, path_relative_to)
