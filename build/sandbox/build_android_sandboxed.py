@@ -22,14 +22,14 @@ _DEFAULT_COMMAND_WRAPPER = \
   '/src/tools/treble/build/sandbox/build_android_target.sh'
 
 
-def build(android_target, variant, nsjail_bin, chroot, dist_dir, build_id,
+def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
           max_cpus, build_goals, config_file=None,
           command_wrapper=_DEFAULT_COMMAND_WRAPPER,
           readonly_bind_mount=None):
   """Builds an Android target in a secure sandbox.
 
   Args:
-    android_target: A string with the name of the android target to build.
+    build_target: A string with the name of the build target.
     variant: A string with the build variant.
     nsjail_bin: A string with the path to the nsjail binary.
     chroot: A string with the path to the chroot of the NsJail sandbox.
@@ -45,6 +45,12 @@ def build(android_target, variant, nsjail_bin, chroot, dist_dir, build_id,
   Returns:
     A list of commands that were executed. Each command is a list of strings.
   """
+  if config_file:
+    cfg = config.Config(config_file)
+    android_target = cfg.get_build_config_android_target(build_target)
+  else:
+    android_target = build_target
+
   # All builds are required to run with the root of the
   # Android source tree as the current directory.
   source_dir = os.getcwd()
@@ -66,7 +72,7 @@ def build(android_target, variant, nsjail_bin, chroot, dist_dir, build_id,
       overlay_config=config_file,
       source_dir=source_dir,
       command=command,
-      android_target=android_target,
+      build_target=build_target,
       dist_dir=dist_dir,
       build_id=build_id,
       max_cpus=max_cpus,
@@ -141,24 +147,6 @@ def parse_args(parser):
   return vars(parser.parse_args())
 
 
-def build_target(android_target,
-                 variant,
-                 build_goals=['droid', 'dist', 'platform_tests']):
-  """Build the specified Android target using the standard build goals
-
-  Args:
-    android_target: A string with the name of the android target to build.
-    variant: A string with the build variant.
-    build_goals: A list of strings with the goals and options to provide to the
-      build command.
-
-  Returns:
-    None
-  """
-  args = parse_args(arg_parser())
-  build(android_target, variant, build_goals=build_goals, **args)
-
-
 def main():
   args = parse_args(arg_parser())
 
@@ -170,11 +158,10 @@ def main():
     raise ValueError('--build_target is required.')
 
   cfg = config.Config(args['config_file'])
-  android_target = cfg.get_build_config_android_target(args['build_target'])
   build_goals = cfg.get_build_goals(args['build_target'], set(args['context']))
 
   build(
-      android_target=android_target,
+      build_target=args['build_target'],
       variant=args['variant'],
       nsjail_bin=args['nsjail_bin'],
       chroot=args['chroot'],
