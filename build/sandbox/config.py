@@ -132,9 +132,17 @@ def _get_build_config_map(config):
 
   Returns:
     A dict of build configs keyed by build_target. Each build config is itself
-    a dict with three items: an 'android_target' item with a string name of the
-    android_target to use for this build_target, a 'tags' item with a set of
-    the string tags, and a 'build_goals' item with list of build goals tuples.
+    a dict with three items:
+
+      android_target: a string name of the android_target to use for this
+      build_target.
+
+      tags: a set of the string tags.
+
+      build_goals: list of build goals tuples.
+
+      allowed_projects_file: a string path name of a file with a containing
+      allowed projects.
   """
   build_config_map = {}
   for target in config.findall('target'):
@@ -144,6 +152,7 @@ def _get_build_config_map(config):
     for build_config in target.findall('build_config'):
       # The build config name defaults to the target name
       build_config_name = build_config.get('name') or target_name
+      allowed_projects_file = build_config.get('allowed_projects_file')
       goal_list = _get_build_config_goals(build_config)
       # A valid build_config is required to have at least one overlay target.
       if not goal_list:
@@ -154,6 +163,7 @@ def _get_build_config_map(config):
           'android_target': target_name,
           'tags': target_tags,
           'build_goals': goal_list,
+          'allowed_projects_file': allowed_projects_file,
       }
   return build_config_map
 
@@ -291,6 +301,10 @@ class Config:
       If the build_target has the tag, True. Otherwise, False.
     """
     return tag in self._build_config_map[build_target]['tags']
+
+  def get_allowed_projects_file(self, build_target):
+    """Given a build_target, return a string with the allowed projects file."""
+    return self._build_config_map[build_target]['allowed_projects_file']
 
   def get_build_config_android_target(self, build_target):
     """Given a build_target, return an android_target.
