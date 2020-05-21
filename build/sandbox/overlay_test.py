@@ -102,6 +102,38 @@ class BindOverlayTest(unittest.TestCase):
     bind_source = os.path.join(self.source_dir, 'overlays/unittest1/from_dir')
     bind_destination = os.path.join(self.source_dir, 'from_dir')
     self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+    self.assertIn(os.path.join(self.source_dir, 'base_dir', 'base_project'), bind_mounts)
+
+  def testValidTargetOverlayBindsAllowedProjects(self):
+    with tempfile.NamedTemporaryFile('w+t') as test_config, \
+        tempfile.NamedTemporaryFile('w+t') as test_allowed_projects:
+      test_config.write(
+        '<?xml version="1.0" encoding="UTF-8" ?>'
+        '<config>'
+        '  <target name="unittest">'
+        '    <overlay name="unittest1"/>'
+        '    <build_config allowed_projects_file="%s">'
+        '      <goal name="goal_name"/>'
+        '    </build_config>'
+        '  </target>'
+        '</config>' % test_allowed_projects.name
+        )
+      test_config.flush()
+      test_allowed_projects.write(
+        '<?xml version="1.0" encoding="UTF-8" ?>'
+        '<manifest>'
+        '  <project name="from_dir" path="overlays/unittest1/from_dir"/>'
+        '</manifest>'
+        )
+      test_allowed_projects.flush()
+      o = overlay.BindOverlay(
+          cfg=config.factory(test_config.name),
+          build_target='unittest',
+          source_dir=self.source_dir)
+    self.assertIsNotNone(o)
+    bind_mounts = o.GetBindMounts()
+    self.assertIn(os.path.join(self.source_dir, 'from_dir'), bind_mounts)
+    self.assertNotIn(os.path.join(self.source_dir, 'base_dir', 'base_project'), bind_mounts)
 
   def testMultipleOverlays(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
