@@ -101,9 +101,6 @@ def arg_parser():
       'NsJail sandbox.')
   parser.add_argument(
       '--config_file',
-      # The old name is deprecated. We'll temporarily keep it
-      # until the systems that use the old name are updated.
-      '--overlay_config',
       required=True,
       help='Path to the overlay configuration file.')
   parser.add_argument(
