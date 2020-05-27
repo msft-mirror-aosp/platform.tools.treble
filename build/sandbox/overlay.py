@@ -27,6 +27,7 @@ import os
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
+from . import config
 
 BindMount = collections.namedtuple('BindMount', ['source_dir', 'readonly'])
 
@@ -77,19 +78,22 @@ class BindOverlay(object):
 
     return conflict_path
 
-  def _AddOverlay(self, overlay_dir, intermediate_work_dir, skip_subdirs,
-                  destination_dir, rw_whitelist):
+  def _AddOverlay(self, source_dir, overlay_dir, intermediate_work_dir, skip_subdirs,
+                  allowed_projects, destination_dir, allowed_read_write):
     """Adds a single overlay directory.
 
     Args:
+      source_dir: A string with the path to the Android platform source.
       overlay_dir: A string path to the overlay directory to apply.
       intermediate_work_dir: A string path to the intermediate work directory used as the
         base for constructing the overlay filesystem.
       skip_subdirs: A set of string paths to skip from overlaying.
+      allowed_projects: If not None, any .git project path not in this list
+        is excluded from overlaying.
       destination_dir: A string with the path to the source with the overlays
         applied to it.
-      rw_whitelist: An optional set of source paths to bind mount with
-        read/write access.
+      allowed_read_write: A function returns true if the path input should
+        be allowed read/write access.
     """
     # Traverse the overlay directory twice
     # The first pass only process git projects
@@ -115,10 +119,12 @@ class BindOverlay(object):
         # so just bind mount it
         del subdirs[:]
 
-        if rw_whitelist is None or current_dir_origin in rw_whitelist:
-          self._AddBindMount(current_dir_origin, current_dir_destination, False)
-        else:
-          self._AddBindMount(current_dir_origin, current_dir_destination, True)
+        if (not allowed_projects or
+            os.path.relpath(current_dir_origin, source_dir) in allowed_projects):
+          if allowed_read_write(current_dir_origin):
+            self._AddBindMount(current_dir_origin, current_dir_destination, False)
+          else:
+            self._AddBindMount(current_dir_origin, current_dir_destination, True)
 
         current_dir_ancestor = current_dir_origin
         while current_dir_ancestor and current_dir_ancestor not in dirs_with_git_projects:
@@ -158,7 +164,7 @@ class BindOverlay(object):
         for file in files:
           file_origin = os.path.join(current_dir_origin, file)
           file_destination = os.path.join(current_dir_destination, file)
-          if rw_whitelist is None or file_origin in rw_whitelist:
+          if allowed_read_write(file_origin):
             self._AddBindMount(file_origin, file_destination, False)
           else:
             self._AddBindMount(file_origin, file_destination, True)
@@ -167,7 +173,7 @@ class BindOverlay(object):
         # The current dir does not have any git projects to it can be bind
         # mounted wholesale
         del subdirs[:]
-        if rw_whitelist is None or current_dir_origin in rw_whitelist:
+        if allowed_read_write(current_dir_origin):
           self._AddBindMount(current_dir_origin, current_dir_destination, False)
         else:
           self._AddBindMount(current_dir_origin, current_dir_destination, True)
@@ -209,7 +215,7 @@ class BindOverlay(object):
     return skip_subdirs
 
   def _AddOverlays(self, source_dir, overlay_dirs, destination_dir,
-                   skip_subdirs, rw_whitelist):
+                   skip_subdirs, allowed_projects, allowed_read_write):
     """Add the selected overlay directories.
 
     Args:
@@ -219,8 +225,10 @@ class BindOverlay(object):
       destination_dir: A string with the path to the source where the overlays
         will be applied.
       skip_subdirs: A set of string paths to be skipped from overlays.
-      rw_whitelist: An optional set of source paths to bind mount with
-        read/write access.
+      allowed_projects: If not None, any .git project path not in this list
+        is excluded from overlaying.
+      allowed_read_write: A function returns true if the path input should
+        be allowed read/write access.
     """
 
     # Create empty intermediate workdir
@@ -243,8 +251,9 @@ class BindOverlay(object):
     skip_subdirs.add(os.path.join(source_dir, 'overlays'))
 
     for overlay_dir in overlay_dirs:
-      self._AddOverlay(overlay_dir, intermediate_work_dir,
-                       skip_subdirs, destination_dir, rw_whitelist)
+      self._AddOverlay(source_dir, overlay_dir, intermediate_work_dir,
+                       skip_subdirs, allowed_projects,
+                       destination_dir, allowed_read_write)
 
 
   def _AddBindMount(self, source_dir, destination_dir, readonly=False):
@@ -295,19 +304,71 @@ class BindOverlay(object):
     """
     return self._bind_mounts
 
+  def _GetReadWriteFunction(self, android_target, source_dir, cfg):
+    """Returns a function that tells you how to mount a path.
+
+    Args:
+      android_target: A string with the name of the android target to be prepared.
+      source_dir: A string with the path to the Android platform source.
+      cfg: A config.Config instance.
+
+    Returns:
+      A function that takes a string path as an input and returns
+      True if the path should be mounted read-write or False if
+      the path should be mounted read-only.
+    """
+
+    # The read/write whitelist provides paths relative to the source dir. It
+    # needs to be updated with absolute paths to make lookup possible.
+    rw_whitelist = []
+    rw_whitelist_map = cfg.get_rw_whitelist_map()
+    if android_target in rw_whitelist_map and rw_whitelist_map[android_target]:
+      rw_whitelist = rw_whitelist_map[android_target]
+    rw_whitelist = {os.path.join(source_dir, p) for p in rw_whitelist}
+
+    allow_readwrite_all = cfg.get_allow_readwrite_all(android_target)
+
+    def AllowReadWrite(path):
+      return allow_readwrite_all or path in rw_whitelist
+
+    return AllowReadWrite
+
+
+  def _GetAllowedProjects(self, build_target, cfg):
+    """Returns a set of paths that are allowed to contain .git projects.
+
+    Args:
+      build_target: A string with the name of the build target to be prepared.
+      cfg: A config.Config instance.
+
+    Returns:
+      If the target has an allowed projects file: a set of paths. Any .git
+        project path not in this set should be excluded from overlaying.
+      Otherwise: None
+    """
+    allowed_projects_file = cfg.get_allowed_projects_file(build_target)
+    if not allowed_projects_file:
+      return None
+    allowed_projects = ET.parse(allowed_projects_file)
+    paths = set()
+    for child in allowed_projects.getroot().findall("project"):
+      paths.add(child.attrib.get("path", child.attrib["name"]))
+    return paths
+
+
   def __init__(self,
-               target,
+               build_target,
                source_dir,
-               config_file,
+               cfg,
                whiteout_list = [],
                destination_dir=None,
                quiet=False):
     """Inits Overlay with the details of what is going to be overlaid.
 
     Args:
-      target: A string with the name of the target to be prepared.
+      build_target: A string with the name of the build target to be prepared.
       source_dir: A string with the path to the Android platform source.
-      config_file: A string path to the XML config file.
+      cfg: A config.Config instance.
       whiteout_list: A list of directories to hide from the build system.
       destination_dir: A string with the path where the overlay filesystem
         will be created. If none is provided, the overlay filesystem
@@ -328,32 +389,30 @@ class BindOverlay(object):
     # seems appropriate
     skip_subdirs = set(whiteout_list)
 
-    # The read/write whitelist provides paths relative to the source dir. It
-    # needs to be updated with absolute paths to make lookup possible.
-    rw_whitelist_map = get_rw_whitelist_map(config_file)
-    rw_whitelist = None
-    if target in rw_whitelist_map and rw_whitelist_map[target]:
-      rw_whitelist = rw_whitelist_map[target]
-    if rw_whitelist:
-      rw_whitelist = {os.path.join(source_dir, p) for p in rw_whitelist}
+    android_target = cfg.get_build_config_android_target(build_target)
+
+    allowed_read_write = self._GetReadWriteFunction(android_target, source_dir, cfg)
+
+    allowed_projects = self._GetAllowedProjects(build_target, cfg)
 
     overlay_dirs = []
-    overlay_map = get_overlay_map(config_file)
-    for overlay_dir in overlay_map[target]:
+    overlay_map = cfg.get_overlay_map()
+    for overlay_dir in overlay_map[android_target]:
       overlay_dir = os.path.join(source_dir, 'overlays', overlay_dir)
       overlay_dirs.append(overlay_dir)
 
     self._AddOverlays(
-        source_dir, overlay_dirs, destination_dir, skip_subdirs, rw_whitelist)
+        source_dir, overlay_dirs, destination_dir,
+        skip_subdirs, allowed_projects, allowed_read_write)
 
     # If specified for this target, create a custom filesystem view
-    fs_view_map = get_fs_view_map(config_file)
-    if target in fs_view_map:
-      for path_relative_from, path_relative_to in fs_view_map[target]:
+    fs_view_map = cfg.get_fs_view_map()
+    if android_target in fs_view_map:
+      for path_relative_from, path_relative_to in fs_view_map[android_target]:
         path_from = os.path.join(source_dir, path_relative_from)
         if os.path.isfile(path_from) or os.path.isdir(path_from):
           path_to = os.path.join(destination_dir, path_relative_to)
-          if rw_whitelist is None or path_from in rw_whitelist:
+          if allowed_read_write(path_from):
             self._AddBindMount(path_from, path_to, False)
           else:
             self._AddBindMount(path_from, path_to, True)
@@ -363,108 +422,3 @@ class BindOverlay(object):
     self._overlay_dirs = overlay_dirs
     if not self._quiet:
       print('Applied overlays ' + ' '.join(self._overlay_dirs))
-
-def get_config(config_file):
-  """Parses the overlay configuration file.
-
-  Args:
-    config_file: A string path to the XML config file.
-
-  Returns:
-    A root config XML Element.
-    None if there is no config file.
-  """
-  config = None
-  if os.path.exists(config_file):
-    tree = ET.parse(config_file)
-    config = tree.getroot()
-  return config
-
-def get_rw_whitelist_map(config_file):
-  """Retrieves the map of allowed read-write paths for each target.
-
-  Args:
-    config_file: A string path to the XML config file.
-
-  Returns:
-    A dict of string lists of keyed by target name. Each value in the
-    dict is a list of allowed read-write paths corresponding to
-    the target.
-  """
-  rw_whitelist_map = {}
-  config = get_config(config_file)
-  # The presence of the config file is optional
-  if config:
-    for target in config.findall('target'):
-      name = target.get('name')
-      rw_whitelist = [a.get('path') for a in target.findall('allow_readwrite')]
-      rw_whitelist_map[name] = rw_whitelist
-
-  return rw_whitelist_map
-
-
-def get_overlay_map(config_file):
-  """Retrieves the map of overlays for each target.
-
-  Args:
-    config_file: A string path to the XML config file.
-
-  Returns:
-    A dict of keyed by target name. Each value in the
-    dict is a list of overlay names corresponding to
-    the target.
-  """
-  overlay_map = {}
-  config = get_config(config_file)
-  # The presence of the config file is optional
-  if config:
-    for target in config.findall('target'):
-      name = target.get('name')
-      overlay_list = [o.get('name') for o in target.findall('overlay')]
-      overlay_map[name] = overlay_list
-    # A valid configuration file is required
-    # to have at least one overlay target
-    if not overlay_map:
-      raise ValueError('Error: the overlay configuration file '
-          'is missing at least one overlay target')
-
-  return overlay_map
-
-def get_fs_view_map(config_file):
-  """Retrieves the map of filesystem views for each target.
-
-  Args:
-    config_file: A string path to the XML config file.
-
-  Returns:
-    A dict of filesystem views keyed by target name.
-    A filesystem view is a list of (source, destination)
-    string path tuples.
-  """
-  fs_view_map = {}
-  config = get_config(config_file)
-
-  # The presence of the config file is optional
-  if config:
-    # A valid config file is not required to
-    # include FS Views, only overlay targets
-    views = {}
-    for view in config.findall('view'):
-      name = view.get('name')
-      paths = []
-      for path in view.findall('path'):
-        paths.append((
-              path.get('source'),
-              path.get('destination')))
-      views[name] = paths
-
-    for target in config.findall('target'):
-      target_name = target.get('name')
-      view_paths = []
-      for view in target.findall('view'):
-        view_paths.extend(views[view.get('name')])
-
-      if view_paths:
-        fs_view_map[target_name] = view_paths
-
-  return fs_view_map
