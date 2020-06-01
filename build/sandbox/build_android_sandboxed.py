@@ -48,6 +48,9 @@ def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
   if config_file:
     cfg = config.Config(config_file)
     android_target = cfg.get_build_config_android_target(build_target)
+    if cfg.has_tag(build_target, 'skip'):
+      print('Warning: skipping build_target "{}" due to tag being set'.format(build_target))
+      return []
   else:
     android_target = build_target
 
