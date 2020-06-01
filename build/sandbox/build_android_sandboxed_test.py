@@ -151,5 +151,31 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
         ]
     )
 
+  def testSkipBuildTag(self):
+    TEST_CONFIG_XML = """<config>
+      <target name="target_skip" tags="skip">
+        <build_config>
+          <goal name="droid"/>
+        </build_config>
+      </target>
+    </config>
+    """
+    with tempfile.NamedTemporaryFile('w+t') as test_config:
+      test_config.write(TEST_CONFIG_XML)
+      test_config.flush()
+      build_android_sandboxed.nsjail.__file__ = '/'
+      os.chdir('/')
+      skip_commands = build_android_sandboxed.build(
+        'target_skip',
+        'userdebug',
+        nsjail_bin='/bin/true',
+        chroot='/chroot',
+        dist_dir='/dist_dir',
+        build_id='0',
+        max_cpus=1,
+        build_goals=[],
+        config_file=test_config.name)
+      self.assertFalse(skip_commands)
+
 if __name__ == '__main__':
   unittest.main()
