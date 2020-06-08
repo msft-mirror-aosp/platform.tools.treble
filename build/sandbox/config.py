@@ -154,6 +154,9 @@ def _get_build_config_map(config):
       build_config_name = build_config.get('name') or target_name
       allowed_projects_file = build_config.get('allowed_projects_file')
       goal_list = _get_build_config_goals(build_config)
+      bc_tags = build_config.get('tags')
+      build_config_tags = set(bc_tags.split(',')) if bc_tags else set()
+
       # A valid build_config is required to have at least one overlay target.
       if not goal_list:
         raise ValueError(
@@ -161,7 +164,7 @@ def _get_build_config_map(config):
             build_config_name)
       build_config_map[build_config_name] = {
           'android_target': target_name,
-          'tags': target_tags,
+          'tags': target_tags.union(build_config_tags),
           'build_goals': goal_list,
           'allowed_projects_file': allowed_projects_file,
       }
