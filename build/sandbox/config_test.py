@@ -25,12 +25,12 @@ _TEST_CONFIG_XML = """<config>
     </build_config>
   </target>
   <target name="android_target_2" tags="cool,hot">
-    <build_config>
+    <build_config tags="warm">
       <goal name="droid"/>
       <goal name="dist"/>
       <goal name="goal_for_android_target_2"/>
     </build_config>
-    <build_config name="build_target_2">
+    <build_config name="build_target_2" tags="dry">
       <goal name="droid"/>
       <goal name="VAR=a"/>
     </build_config>
@@ -96,8 +96,8 @@ class ConfigTest(unittest.TestCase):
       cfg = config.factory(test_config.name)
 
       self.assertEqual(cfg.get_tags('android_target_1'), set())
-      self.assertEqual(cfg.get_tags('android_target_2'), set(['cool', 'hot']))
-      self.assertEqual(cfg.get_tags('build_target_2'), set(['cool', 'hot']))
+      self.assertEqual(cfg.get_tags('android_target_2'), set(['cool', 'hot', 'warm']))
+      self.assertEqual(cfg.get_tags('build_target_2'), set(['cool', 'hot', 'dry']))
       self.assertEqual(cfg.get_tags('android_target_3'), set())
 
       self.assertFalse(cfg.has_tag('android_target_1', 'cool'))
