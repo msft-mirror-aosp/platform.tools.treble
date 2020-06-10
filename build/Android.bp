@@ -30,6 +30,10 @@ python_test_host {
     main: "test.py",
     defaults: ["treble_build_default"],
     srcs: [
+        "sandbox/build_android_sandboxed.py",
+        "sandbox/build_android_sandboxed_test.py",
+        "sandbox/config.py",
+        "sandbox/config_test.py",
         "sandbox/nsjail.py",
         "sandbox/nsjail_test.py",
         "sandbox/overlay.py",

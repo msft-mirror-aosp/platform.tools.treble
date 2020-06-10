@@ -25,6 +25,7 @@ import collections
 import os
 import re
 import subprocess
+from . import config
 from .overlay import BindMount
 from .overlay import BindOverlay
 
@@ -44,47 +45,13 @@ _CHROOT_MOUNT_POINTS = [
   'usr',
 ]
 
-def load_rw_whitelist(rw_whitelist_config):
-  """Loads a read/write whitelist configuration file.
-
-  The read/write whitelist configuration file is a text file that contains a
-  list of source_dir relative paths which should be mounted read/write inside
-  the build sandbox. Empty lines and lines begnning with a comment marker ('#')
-  will be ignored. An empty whitelist implies that all source paths are mounted
-  read-only. An empty rw_whitelist_config argument implies that all source
-  paths are mounted read/write.
-
-  Args:
-    rw_whitelist_config: A string path to a read/write whitelist file.
-
-  Returns:
-    A set of whitelist path strings.
-  """
-  if not rw_whitelist_config:
-    return None
-
-  if not os.path.exists(rw_whitelist_config):
-    return None
-
-  ret = set()
-  with open(rw_whitelist_config, 'r') as f:
-    for p in f.read().splitlines():
-      p = p.strip()
-      if not p or p.startswith('#'):
-        continue
-      ret.add(p)
-
-  return ret
-
 
 def run(command,
-        android_target,
+        build_target,
         nsjail_bin,
         chroot,
         overlay_config=None,
-        rw_whitelist_config=None,
         source_dir=os.getcwd(),
-        out_dirname_for_whiteout=None,
         dist_dir=None,
         build_id=None,
         out_dir = None,
@@ -104,16 +71,12 @@ def run(command,
 
   Args:
     command: A list of strings with the command to run.
-    android_target: A string with the name of the target to be prepared
+    build_target: A string with the name of the build target to be prepared
       inside the container.
     nsjail_bin: A string with the path to the nsjail binary.
     chroot: A string with the path to the chroot.
     overlay_config: A string path to an overlay configuration file.
-    rw_whitelist_config: A string path to a read/write whitelist configuration file.
     source_dir: A string with the path to the Android platform source.
-    out_dirname_for_whiteout: The optional name of the folder within
-      source_dir that is the Android build out folder *as seen from outside
-      the Docker container*.
     dist_dir: A string with the path to the dist directory.
     build_id: A string with the build identifier.
     out_dir: An optional path to the Android build out folder.
@@ -143,13 +106,11 @@ def run(command,
 
   nsjail_command = get_command(
       command=command,
-      android_target=android_target,
+      build_target=build_target,
       nsjail_bin=nsjail_bin,
       chroot=chroot,
-      overlay_config=overlay_config,
-      rw_whitelist_config=rw_whitelist_config,
+      cfg=config.factory(overlay_config),
       source_dir=source_dir,
-      out_dirname_for_whiteout=out_dirname_for_whiteout,
       dist_dir=dist_dir,
       build_id=build_id,
       out_dir=out_dir,
@@ -174,13 +135,11 @@ def run(command,
   return nsjail_command
 
 def get_command(command,
-        android_target,
+        build_target,
         nsjail_bin,
         chroot,
-        overlay_config=None,
-        rw_whitelist_config=None,
+        cfg=None,
         source_dir=os.getcwd(),
-        out_dirname_for_whiteout=None,
         dist_dir=None,
         build_id=None,
         out_dir = None,
@@ -197,16 +156,12 @@ def get_command(command,
 
   Args:
     command: A list of strings with the command to run.
-    android_target: A string with the name of the target to be prepared
+    build_target: A string with the name of the build target to be prepared
       inside the container.
     nsjail_bin: A string with the path to the nsjail binary.
     chroot: A string with the path to the chroot.
-    overlay_config: A string path to an overlay configuration file.
-    rw_whitelist_config: A string path to a read/write whitelist configuration file.
+    cfg: A config.Config instance or None.
     source_dir: A string with the path to the Android platform source.
-    out_dirname_for_whiteout: The optional name of the folder within
-      source_dir that is the Android build out folder *as seen from outside
-      the Docker container*.
     dist_dir: A string with the path to the dist directory.
     build_id: A string with the build identifier.
     out_dir: An optional path to the Android build out folder.
@@ -271,8 +226,6 @@ def get_command(command,
     nsjail_command.append('--quiet')
 
   whiteout_list = set()
-  if out_dirname_for_whiteout:
-    whiteout_list.add(os.path.join(source_dir, out_dirname_for_whiteout))
   if out_dir and (
       os.path.dirname(out_dir) == source_dir) and (
       os.path.basename(out_dir) != 'out'):
@@ -280,17 +233,14 @@ def get_command(command,
     if not os.path.exists(out_dir):
       os.makedirs(out_dir)
 
-  rw_whitelist = load_rw_whitelist(rw_whitelist_config)
-
-  # Apply the overlay for the selected Android target to the source
-  # directory if an overlay configuration was provided
-  if overlay_config and os.path.exists(overlay_config):
-    overlay = BindOverlay(android_target,
+  # Apply the overlay for the selected Android target to the source directory
+  # from the supplied config.Config instance (which may be None).
+  if cfg is not None:
+    overlay = BindOverlay(build_target,
                       source_dir,
-                      overlay_config,
+                      cfg,
                       whiteout_list,
                       _SOURCE_MOUNT_POINT,
-                      rw_whitelist,
                       quiet=quiet)
     bind_mounts = overlay.GetBindMounts()
   else:
@@ -412,9 +362,6 @@ def parse_args():
       '--overlay_config',
       help='Path to the overlay configuration file.')
   parser.add_argument(
-      '--rw_whitelist_config',
-      help='Path to the read/write whitelist configuration file.')
-  parser.add_argument(
       '--source_dir',
       default=os.getcwd(),
       help='Path to Android platform source to be mounted as /src.')
@@ -433,24 +380,12 @@ def parse_args():
       'the Android build. This path must be relative to meta_root_dir. '
       'Defaults to \'%s\'' % _DEFAULT_META_ANDROID_DIR)
   parser.add_argument(
-      '--out_dirname_for_whiteout',
-      help='The optional name of the folder within source_dir that is the '
-      'Android build out folder *as seen from outside the Docker '
-      'container*.')
-  parser.add_argument(
-      '--whiteout',
-      action='append',
-      default=[],
-      help='Optional glob filter of directories to add to the whiteout. The '
-      'directories will not appear in the container. '
-      'Can be specified multiple times.')
-  parser.add_argument(
       '--command',
       default=_DEFAULT_COMMAND,
       help='Command to run after entering the NsJail.'
       'If not set then an interactive Bash shell will be launched')
   parser.add_argument(
-      '--android_target',
+      '--build_target',
       required=True,
       help='Android target selected for building')
   parser.add_argument(
@@ -519,11 +454,9 @@ def run_with_args(args):
   run(chroot=args.chroot,
       nsjail_bin=args.nsjail_bin,
       overlay_config=args.overlay_config,
-      rw_whitelist_config=args.rw_whitelist_config,
       source_dir=args.source_dir,
       command=args.command.split(),
-      android_target=args.android_target,
-      out_dirname_for_whiteout=args.out_dirname_for_whiteout,
+      build_target=args.build_target,
       dist_dir=args.dist_dir,
       build_id=args.build_id,
       out_dir=args.out_dir,
