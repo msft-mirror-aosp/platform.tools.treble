@@ -19,21 +19,21 @@ import xml.etree.ElementTree as ET
 # The config file must be in XML with a structure as descibed below.
 #
 # The top level config element shall contain one or more "target" child
-# elements. Each of these conrresponds to a different Android "lunch" build
-# configuration target.
+# elements. Each of these may contain one or more build_config child elements.
+# The build_config child elements will inherit the properties of the target
+# parent.
 #
-# Each "target" may contain the following:
+# Each "target" and "build_config" may contain the following:
 #
-# Properties:
+# Attributes:
 #
 #   name: The name of the target.
+#
+#   android_target: The name of the android target used with lunch
 #
 #   allow_readwrite_all: "true" if the full source folder shall be mounted as
 #   read/write. It should be accompanied by a comment with the bug describing
 #   why it was required.
-#
-#   dynamic_partition_enabled: "true" if dynamic partitions are enabled on this
-#   target.
 #
 #   tags: A comma-separated list of strings to be associated with the target
 #     and any of its nested build_targets. You can use a tag to associate
@@ -44,7 +44,7 @@ import xml.etree.ElementTree as ET
 #
 #   fast_merge_config: The configuration options for fast merge.
 #
-#     Properties:
+#     Attributes:
 #
 #       framework_images: Comma-separated list of image names that
 #         should come from the framework build.
@@ -55,14 +55,14 @@ import xml.etree.ElementTree as ET
 #
 #   overlay: An overlay to be mounted while building the target.
 #
-#     Properties:
+#     Attributes:
 #
 #       name: The name of the overlay.
 #
 #   view: A map (optionally) specifying a filesystem view mapping for each
 #     target.
 #
-#     Properties:
+#     Attributes:
 #
 #       name: The name of the view.
 #
@@ -71,13 +71,13 @@ import xml.etree.ElementTree as ET
 #   accompanied by a bug that indicates why it was required and tracks the
 #   progress to a fix.
 #
-#     Properties:
+#     Attributes:
 #
 #       path: The path to be allowed read-write mounting.
 #
 #   build_config: A list of goals to be used while building the target.
 #
-#     Properties:
+#     Attributes:
 #
 #       name: The name of the build config. Defaults to the target name
 #         if not set.
@@ -98,30 +98,247 @@ import xml.etree.ElementTree as ET
 #             requested contexts (see get_build_goals).
 
 
-def _get_build_config_goals(build_config):
-  """Retrieves goals from build_config.
+class BuildConfig(object):
+  """Represents configuration of a build_target.
+
+  Attributes:
+    name: name of the build_target used to pull the configuration.
+    android_target: The name of the android target used with lunch.
+    build_goals: List of goals to be used while building the target.
+    overlays: List of overlays to be mounted.
+    views: A list of (source, destination) string path tuple to be mounted.
+      See view nodes in XML.
+    allow_readwrite_all: If true, mount source tree as rw.
+    allow_readwrite: List of directories to be mounted as rw.
+    allowed_projects_file: a string path name of a file with a containing
+      allowed projects.
+    fmc_framework_images: For a fast merge config (FMC), the comma-separated
+      list of image names that should come from the framework build.
+    fmc_misc_info_keys: For a fast merge config (FMC), A path to the
+      newline-separated config file containing keys to obtain from the
+      framework instance of misc_info.txt, used for creating vbmeta.img.
+  """
+
+  def __init__(self,
+               name,
+               android_target,
+               tags=frozenset(),
+               build_goals=(),
+               overlays=(),
+               views=(),
+               allow_readwrite_all=False,
+               allow_readwrite=(),
+               allowed_projects_file=None,
+               fmc_framework_images=None,
+               fmc_misc_info_keys=None):
+    super().__init__()
+    self.name = name
+    self.android_target = android_target
+    self.tags = tags
+    self.build_goals = list(build_goals)
+    self.overlays = list(overlays)
+    self.views = list(views)
+    self.allow_readwrite_all = allow_readwrite_all
+    self.allow_readwrite = list(allow_readwrite)
+    self.allowed_projects_file = allowed_projects_file
+    self.fmc_framework_images = fmc_framework_images
+    self.fmc_misc_info_keys = fmc_misc_info_keys
+
+  def validate(self):
+    """Run tests to validate build configuration"""
+    # A valid build_config is required to have at least one goal.
+    if not self.build_goals:
+      raise ValueError(
+          f'Error: build_config {self.name} must have at least one goal')
+    if not self.name:
+      raise ValueError('Error build_config must have a name.')
+
+
+  @classmethod
+  def from_config(cls, config_elem, fs_view_map, base_config=None):
+    """Creates a BuildConfig from a config XML element and an optional
+      base_config.
+
+    Args:
+      config_elem: the config XML node element to build the configuration
+      fs_view_map: A map of view names to list of tuple(source, destination)
+        paths.
+      base_config: the base BuildConfig to use
+
+    Returns:
+      A build config generated from the config element and the base
+      configuration if provided.
+    """
+    if base_config is None:
+      # Build a base_config with required elements from the new config_elem
+      name = config_elem.get('name')
+      base_config = cls(
+          name=name, android_target=config_elem.get('android_target', name))
+
+    return cls(
+        android_target=config_elem.get('android_target',
+                                       base_config.android_target),
+        name=config_elem.get('name', base_config.name),
+        allowed_projects_file=config_elem.get(
+            'allowed_projects_file', base_config.allowed_projects_file),
+        build_goals=_get_build_config_goals(config_elem,
+                                            base_config.build_goals),
+        tags=_get_config_tags(config_elem, base_config.tags),
+        overlays=_get_overlays(config_elem, base_config.overlays),
+        allow_readwrite=_get_allow_readwrite(config_elem,
+                                             base_config.allow_readwrite),
+        views=_get_views(config_elem, fs_view_map, base_config.views),
+        allow_readwrite_all=_get_allowed_readwrite_all(
+            config_elem, base_config.allow_readwrite_all),
+        fmc_framework_images=_get_fast_config_framework_images(
+            config_elem, base_config.fmc_framework_images),
+        fmc_misc_info_keys=_get_fast_config_misc_info_keys(
+            config_elem, base_config.fmc_misc_info_keys))
+
+
+def _get_build_config_goals(config_elem, base=None):
+  """Retrieves goals from build_config or target.
 
   Args:
-    build_config: A build_config xml element.
+    config_elem: A build_config or target xml element.
+    base: Initial list of goals to prepend to the list
 
   Returns:
     A list of tuples where the first element of the tuple is the build goal
     name, and the second is a list of the contexts to which this goal applies.
   """
-  goals = []
 
-  for goal in build_config.findall('goal'):
-    goal_name = goal.get('name')
-    goal_contexts = goal.get('contexts')
+  return base + [(goal.get('name'), set(goal.get('contexts').split(','))
+                  if goal.get('contexts') else None)
+                 for goal in config_elem.findall('goal')]
 
-    if goal_contexts:
-      goal_contexts = set(goal_contexts.split(','))
-      if goal_contexts:
-        goals.append((goal_name, goal_contexts))
-    else:
-      goals.append((goal_name, set()))
 
-  return goals
+def _get_config_tags(config_elem, base=frozenset()):
+  """Retrieves tags from build_config or target.
+
+  Args:
+    config_elem: A build_config or target xml element.
+    base: Initial list of tags to seed the set
+
+  Returns:
+    A set of tags for a build_config.
+  """
+  tags = config_elem.get('tags')
+  return base.union(set(tags.split(',')) if tags else set())
+
+
+def _get_allowed_readwrite_all(config_elem, default=False):
+  """Determines if build_config or target is set to allow readwrite for all
+    source paths.
+
+  Args:
+    config_elem: A build_config or target xml element.
+    default: Value to use if element doesn't contain the
+      allow_readwrite_all attribute.
+
+  Returns:
+    True if build config is set to allow readwrite for all sorce paths
+  """
+  value = config_elem.get('allow_readwrite_all')
+  return value == 'true' if value else default
+
+
+def _get_overlays(config_elem, base=None):
+  """Retrieves list of overlays from build_config or target.
+
+  Args:
+    config_elem: A build_config or target xml element.
+    base: Initial list of overlays to prepend to the list
+
+  Returns:
+    A list of overlays to mount for a build_config or target.
+  """
+  return base + [o.get('name') for o in config_elem.findall('overlay')]
+
+
+def _get_views(config_elem, fs_view_map, base=None):
+  """Retrieves list of views from build_config or target.
+
+  Args:
+    config_elem: A build_config or target xml element.
+    base: Initial list of views to prepend to the list
+
+  Returns:
+    A list of (source, destination) string path tuple to be mounted. See view
+      nodes in XML.
+  """
+  return base + [fs for o in config_elem.findall('view')
+                 for fs in fs_view_map[o.get('name')]]
+
+
+def _get_allow_readwrite(config_elem, base=None):
+  """Retrieves list of directories to be mounted rw from build_config or
+    target.
+
+  Args:
+    config_elem: A build_config or target xml element.
+    base: Initial list of rw directories to prepend to the list
+
+  Returns:
+    A list of directories to be mounted rw.
+  """
+  return (base +
+          [o.get('path') for o in config_elem.findall('allow_readwrite')])
+
+
+def _get_fast_config_framework_images(config_elem, default=None):
+  """Retrieves a comma separated string containing framework images to be used
+    for merging in fast mode
+
+  Args:
+    config_elem: A build_config or target xml element.
+    default: Value to use if element doesn't contain the
+      fast_merge_config element or framework_images attribute.
+
+  Returns:
+    A string of comma separated image names
+  """
+  fast_merge_config = config_elem.find('fast_merge_config')
+  if fast_merge_config is None:
+    return default
+  images = fast_merge_config.get('framework_images')
+  return images if images else default
+
+def _get_fast_config_misc_info_keys(config_elem, default=None):
+  """Retrieves the misc_info_keys path setting
+
+  Args:
+    config_elem: A build_config or target xml element.
+    default: Value to use if element doesn't contain the
+      fast_merge_config element or misc_info_keys attribute.
+
+  Returns:
+    A path to the misc_info_keys file
+  """
+  fast_merge_config = config_elem.find('fast_merge_config')
+  if fast_merge_config is None:
+    return default
+  misc_info_keys = fast_merge_config.get('misc_info_keys')
+  return misc_info_keys if misc_info_keys else default
+
+
+def _get_fs_view_map(config):
+  """Retrieves the map of filesystem views.
+
+  Args:
+    config: An XML Element that is the root of the config XML tree.
+
+  Returns:
+    A dict of filesystem views keyed by view name. A filesystem view is a
+    list of (source, destination) string path tuples.
+  """
+  # A valid config file is not required to include FS Views, only overlay
+  # targets.
+  return {
+      view.get('name'): [(path.get('source'), path.get('destination'))
+                         for path in view.findall('path')
+                        ] for view in config.findall('view')
+  }
 
 
 def _get_build_config_map(config):
@@ -131,136 +348,20 @@ def _get_build_config_map(config):
     config: An XML Element that is the root of the config XML tree.
 
   Returns:
-    A dict of build configs keyed by build_target. Each build config is itself
-    a dict with three items:
-
-      android_target: a string name of the android_target to use for this
-      build_target.
-
-      tags: a set of the string tags.
-
-      build_goals: list of build goals tuples.
-
-      allowed_projects_file: a string path name of a file with a containing
-      allowed projects.
+    A dict of BuildConfig keyed by build_target.
   """
+  fs_view_map = _get_fs_view_map(config)
   build_config_map = {}
-  for target in config.findall('target'):
-    target_name = target.get('name')
-    tags = target.get('tags')
-    target_tags = set(tags.split(',')) if tags else set()
-    for build_config in target.findall('build_config'):
-      # The build config name defaults to the target name
-      build_config_name = build_config.get('name') or target_name
-      allowed_projects_file = build_config.get('allowed_projects_file')
-      goal_list = _get_build_config_goals(build_config)
-      bc_tags = build_config.get('tags')
-      build_config_tags = set(bc_tags.split(',')) if bc_tags else set()
+  for target_config in config.findall('target'):
+    base_target = BuildConfig.from_config(target_config, fs_view_map)
 
-      # A valid build_config is required to have at least one overlay target.
-      if not goal_list:
-        raise ValueError(
-            'Error: build_config %s must have at least one goal' %
-            build_config_name)
-      build_config_map[build_config_name] = {
-          'android_target': target_name,
-          'tags': target_tags.union(build_config_tags),
-          'build_goals': goal_list,
-          'allowed_projects_file': allowed_projects_file,
-      }
+    for build_config in target_config.findall('build_config'):
+      build_target = BuildConfig.from_config(build_config, fs_view_map,
+                                             base_target)
+      build_target.validate()
+      build_config_map[build_target.name] = build_target
+
   return build_config_map
-
-
-def _get_rw_whitelist_map(config):
-  """Retrieves the map of allowed read-write paths for each target.
-
-  Args:
-    config: An XML Element that is the root of the config XML tree.
-
-  Returns:
-    A dict of string lists of keyed by target name. Each value in the dict is a
-    list of allowed read-write paths corresponding to the target.
-  """
-  rw_whitelist_map = {}
-  for target in config.findall('target'):
-    name = target.get('name')
-    rw_whitelist = [a.get('path') for a in target.findall('allow_readwrite')]
-    rw_whitelist_map[name] = rw_whitelist
-
-  return rw_whitelist_map
-
-def _get_targets_allowed_readwrite(config):
-  """Retrieves the targets that should mount all their source as read-write.
-
-  Args:
-    config: An XML Element that is the root of the config XML tree.
-
-  Returns:
-    A list of string target names.
-  """
-  targets_allowed_readwrite = []
-  for target in config.findall('target'):
-    name = target.get('name')
-    if target.get('allow_readwrite_all') == 'true':
-      targets_allowed_readwrite.append(name)
-
-  return targets_allowed_readwrite
-
-
-def _get_overlay_map(config):
-  """Retrieves the map of overlays for each target.
-
-  Args:
-    config: An XML Element that is the root of the config XML tree.
-
-  Returns:
-    A dict of keyed by target name. Each value in the dict is a list of overlay
-    names corresponding to the target.
-  """
-  overlay_map = {}
-  for target in config.findall('target'):
-    name = target.get('name')
-    overlay_list = [o.get('name') for o in target.findall('overlay')]
-    overlay_map[name] = overlay_list
-  # A valid configuration file is required to have at least one overlay target.
-  if not overlay_map:
-    raise ValueError('Error: the overlay configuration file is missing at '
-                     'least one overlay target')
-
-  return overlay_map
-
-
-def _get_fs_view_map(config):
-  """Retrieves the map of filesystem views for each target.
-
-  Args:
-    config: An XML Element that is the root of the config XML tree.
-
-  Returns:
-    A dict of filesystem views keyed by target name. A filesystem view is a
-    list of (source, destination) string path tuples.
-  """
-  fs_view_map = {}
-  # A valid config file is not required to include FS Views, only overlay
-  # targets.
-  views = {}
-  for view in config.findall('view'):
-    name = view.get('name')
-    paths = []
-    for path in view.findall('path'):
-      paths.append((path.get('source'), path.get('destination')))
-    views[name] = paths
-
-  for target in config.findall('target'):
-    target_name = target.get('name')
-    view_paths = []
-    for view in target.findall('view'):
-      view_paths.extend(views[view.get('name')])
-
-    if view_paths:
-      fs_view_map[target_name] = view_paths
-
-  return fs_view_map
 
 
 class Config:
@@ -280,10 +381,6 @@ class Config:
     tree = ET.parse(config_filename)
     config = tree.getroot()
     self._build_config_map = _get_build_config_map(config)
-    self._fs_view_map = _get_fs_view_map(config)
-    self._overlay_map = _get_overlay_map(config)
-    self._rw_whitelist_map = _get_rw_whitelist_map(config)
-    self._targets_allowed_readwrite = _get_targets_allowed_readwrite(config)
 
   def get_available_build_targets(self):
     """Return a list of available build targets."""
@@ -291,7 +388,7 @@ class Config:
 
   def get_tags(self, build_target):
     """Given a build_target, return the (possibly empty) set of tags."""
-    return self._build_config_map[build_target]['tags']
+    return self._build_config_map[build_target].tags
 
   def has_tag(self, build_target, tag):
     """Return true if build_target has tag.
@@ -303,11 +400,11 @@ class Config:
     Returns:
       If the build_target has the tag, True. Otherwise, False.
     """
-    return tag in self._build_config_map[build_target]['tags']
+    return tag in self._build_config_map[build_target].tags
 
   def get_allowed_projects_file(self, build_target):
     """Given a build_target, return a string with the allowed projects file."""
-    return self._build_config_map[build_target]['allowed_projects_file']
+    return self._build_config_map[build_target].allowed_projects_file
 
   def get_build_config_android_target(self, build_target):
     """Given a build_target, return an android_target.
@@ -325,9 +422,9 @@ class Config:
     Returns:
       A string android_target that can be used for lunch.
     """
-    return self._build_config_map[build_target]['android_target']
+    return self._build_config_map[build_target].android_target
 
-  def get_build_goals(self, build_target, contexts=None):
+  def get_build_goals(self, build_target, contexts=frozenset()):
     """Given a build_target and a context, return a list of build goals.
 
     For a given build_target, we may build in a variety of contexts. For
@@ -358,26 +455,14 @@ class Config:
     Returns:
       A list of strings, where each string is a goal to be passed to make.
     """
+
     build_goals = []
-
-    if contexts is None:
-      contexts = set()
-
-    for build_goal in self._build_config_map[build_target]['build_goals']:
-
-      # build_goal is a tuple of (name, contexts), where name is the string
-      # name of the of goal to be passed to make, and contexts is a set use to
-      # match the requested contexts.
-
-      if build_goal[1]:
-        # If we have a non-empty contexts set attached to the goal, include the
-        # goal only if the caller requested the context.
-        if contexts & build_goal[1]:
-          build_goals.append(build_goal[0])
-      else:
-        # If there is an empty contexts set attached to the goal, always
-        # included the goal.
-        build_goals.append(build_goal[0])
+    for goal, build_contexts in self._build_config_map[
+        build_target].build_goals:
+      if not build_contexts:
+        build_goals.append(goal)
+      elif build_contexts.intersection(contexts):
+        build_goals.append(goal)
 
     return build_goals
 
@@ -388,18 +473,18 @@ class Config:
       A dict of string lists of keyed by target name. Each value in the dict is
       a list of allowed read-write paths corresponding to the target.
     """
-    return self._rw_whitelist_map
+    return {b.name: b.allow_readwrite for b in self._build_config_map.values()}
 
-  def get_allow_readwrite_all(self, android_target):
+  def get_allow_readwrite_all(self, build_target):
     """Return True if the target should mount all its source as read-write.
 
     Args:
-      android_target: A string name of an Android target.
+      build_target: A string build_target to be queried.
 
     Returns:
       True if the target should mount all its source as read-write.
     """
-    return android_target in self._targets_allowed_readwrite
+    return self._build_config_map[build_target].allow_readwrite_all
 
   def get_overlay_map(self):
     """Return the overlay map.
@@ -408,7 +493,8 @@ class Config:
       A dict of keyed by target name. Each value in the dict is a list of
       overlay names corresponding to the target.
     """
-    return self._overlay_map
+    return {b.name : b.overlays for b in self._build_config_map.values()}
+
 
   def get_fs_view_map(self):
     """Return the filesystem view map.
@@ -416,7 +502,12 @@ class Config:
       A dict of filesystem views keyed by target name. A filesystem view is a
       list of (source, destination) string path tuples.
     """
-    return self._fs_view_map
+    return {b.name : b.views for b in self._build_config_map.values()}
+
+
+  def get_build_config(self, build_target):
+    return self._build_config_map.get(build_target)
+
 
 def factory(config_filename):
   """Create an instance of a Config class.
