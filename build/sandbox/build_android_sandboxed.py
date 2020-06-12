@@ -25,7 +25,7 @@ _DEFAULT_COMMAND_WRAPPER = \
 def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
           max_cpus, build_goals, config_file=None,
           command_wrapper=_DEFAULT_COMMAND_WRAPPER,
-          readonly_bind_mount=None):
+          readonly_bind_mount=None, env=[]):
   """Builds an Android target in a secure sandbox.
 
   Args:
@@ -41,6 +41,8 @@ def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
     config_file: A string path to an overlay configuration file.
     command_wrapper: A string path to the command wrapper.
     readonly_bind_mount: A string path to a path to be mounted as read-only.
+    env: An array of environment variables to define in the NsJail sandbox in the
+      `var=val` syntax.
 
   Returns:
     A list of commands that were executed. Each command is a list of strings.
@@ -79,7 +81,8 @@ def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
       dist_dir=dist_dir,
       build_id=build_id,
       max_cpus=max_cpus,
-      readonly_bind_mounts=readonly_bind_mounts)
+      readonly_bind_mounts=readonly_bind_mounts,
+      env=env)
 
 
 def arg_parser():
@@ -115,6 +118,13 @@ def arg_parser():
       '--readonly_bind_mount',
       help='Path to the a path to be mounted as readonly inside the secure '
       'build sandbox.')
+  parser.add_argument(
+      '--env', '-e',
+      type=str,
+      default=[],
+      action='append',
+      help='Specify an environment variable to the NSJail sandbox. Can be specified '
+      'muliple times. Syntax: var_name=value')
   parser.add_argument(
       '--dist_dir',
       help='Path to the Android dist directory. This is where '
@@ -168,6 +178,7 @@ def main():
       config_file=args['config_file'],
       command_wrapper=args['command_wrapper'],
       readonly_bind_mount=args['readonly_bind_mount'],
+      env=args['env'],
       dist_dir=args['dist_dir'],
       build_id=args['build_id'],
       max_cpus=args['max_cpus'],
