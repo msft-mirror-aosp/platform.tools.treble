@@ -318,18 +318,18 @@ class BindOverlay(object):
       the path should be mounted read-only.
     """
 
-    # The read/write whitelist provides paths relative to the source dir. It
+    # The read/write allowlist provides paths relative to the source dir. It
     # needs to be updated with absolute paths to make lookup possible.
-    rw_whitelist = []
-    rw_whitelist_map = cfg.get_rw_whitelist_map()
-    if android_target in rw_whitelist_map and rw_whitelist_map[android_target]:
-      rw_whitelist = rw_whitelist_map[android_target]
-    rw_whitelist = {os.path.join(source_dir, p) for p in rw_whitelist}
+    rw_allowlist = []
+    rw_allowlist_map = cfg.get_rw_allowlist_map()
+    if android_target in rw_allowlist_map and rw_allowlist_map[android_target]:
+      rw_allowlist = rw_allowlist_map[android_target]
+    rw_allowlist = {os.path.join(source_dir, p) for p in rw_allowlist}
 
     allow_readwrite_all = cfg.get_allow_readwrite_all(android_target)
 
     def AllowReadWrite(path):
-      return allow_readwrite_all or path in rw_whitelist
+      return allow_readwrite_all or path in rw_allowlist
 
     return AllowReadWrite
 
