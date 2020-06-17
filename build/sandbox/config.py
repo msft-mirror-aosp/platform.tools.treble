@@ -466,8 +466,8 @@ class Config:
 
     return build_goals
 
-  def get_rw_whitelist_map(self):
-    """Return read-write whitelist map.
+  def get_rw_allowlist_map(self):
+    """Return read-write allowlist map.
 
     Returns:
       A dict of string lists of keyed by target name. Each value in the dict is
