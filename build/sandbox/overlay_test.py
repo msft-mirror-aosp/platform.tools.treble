@@ -166,7 +166,7 @@ class BindOverlayTest(unittest.TestCase):
       'upper_subdir/lower_subdir/from_unittest2')
     self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
 
-  def testMultipleOverlaysWithWhitelist(self):
+  def testMultipleOverlaysWithAllowlist(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
       test_config.write(
         '<?xml version="1.0" encoding="UTF-8" ?>'
