@@ -65,6 +65,7 @@ def run(command,
         dry_run=False,
         quiet=False,
         env=[],
+        nsjail_wrapper=[],
         stdout=None,
         stderr=None):
   """Run inside an NsJail sandbox.
@@ -93,6 +94,7 @@ def run(command,
     quiet: If true, the function will not display the command and
       will pass -quiet argument to nsjail
     env: An array of environment variables to define in the jail in the `var=val` syntax.
+    nsjail_wrapper: A list of strings used to wrap the nsjail command.
     stdout: the standard output for all printed messages. Valid values are None, a file
       descriptor or file object. A None value means sys.stdout is used.
     stderr: the standard error for all printed messages. Valid values are None, a file
@@ -122,7 +124,8 @@ def run(command,
       readonly_bind_mounts=readonly_bind_mounts,
       extra_nsjail_args=extra_nsjail_args,
       quiet=quiet,
-      env=env)
+      env=env,
+      nsjail_wrapper=nsjail_wrapper)
 
   run_command(
       nsjail_command=nsjail_command,
@@ -151,7 +154,8 @@ def get_command(command,
         readonly_bind_mounts=[],
         extra_nsjail_args=[],
         quiet=False,
-        env=[]):
+        env=[],
+        nsjail_wrapper=[]):
   """Get command to run nsjail sandbox.
 
   Args:
@@ -203,7 +207,7 @@ def get_command(command,
       raise ValueError('error: the provided meta_android_dir is not a path'
           'relative to meta_root_dir.')
 
-  nsjail_command = [nsjail_bin,
+  nsjail_command = nsjail_wrapper + [nsjail_bin,
     '--env', 'USER=nobody',
     '--config', config_file]
 
