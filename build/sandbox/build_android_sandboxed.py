@@ -17,6 +17,7 @@ import argparse
 import os
 from . import config
 from . import nsjail
+from . import rbe
 
 _DEFAULT_COMMAND_WRAPPER = \
   '/src/tools/treble/build/sandbox/build_android_target.sh'
@@ -24,7 +25,7 @@ _DEFAULT_COMMAND_WRAPPER = \
 
 def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
           max_cpus, build_goals, config_file=None,
-          command_wrapper=_DEFAULT_COMMAND_WRAPPER,
+          command_wrapper=_DEFAULT_COMMAND_WRAPPER, use_rbe=False,
           readonly_bind_mount=None, env=[]):
   """Builds an Android target in a secure sandbox.
 
@@ -40,6 +41,7 @@ def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
       build command.
     config_file: A string path to an overlay configuration file.
     command_wrapper: A string path to the command wrapper.
+    use_rbe: If true, will attempt to use RBE for the build.
     readonly_bind_mount: A string path to a path to be mounted as read-only.
     env: An array of environment variables to define in the NsJail sandbox in the
       `var=val` syntax.
@@ -71,7 +73,17 @@ def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
   if readonly_bind_mount:
     readonly_bind_mounts = [readonly_bind_mount]
 
-  return nsjail.run(
+  extra_nsjail_args = []
+  cleanup = lambda: None
+  nsjail_wrapper = []
+  if use_rbe:
+    cleanup = rbe.setup()
+    env.extend(rbe.get_env())
+    extra_nsjail_args.extend(rbe.get_extra_nsjail_args())
+    readonly_bind_mounts.extend(rbe.get_readonlybind_mounts())
+    nsjail_wrapper = rbe.get_nsjail_bin_wrapper()
+
+  ret = nsjail.run(
       nsjail_bin=nsjail_bin,
       chroot=chroot,
       overlay_config=config_file,
@@ -81,8 +93,14 @@ def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
       dist_dir=dist_dir,
       build_id=build_id,
       max_cpus=max_cpus,
+      extra_nsjail_args=extra_nsjail_args,
       readonly_bind_mounts=readonly_bind_mounts,
-      env=env)
+      env=env,
+      nsjail_wrapper=nsjail_wrapper)
+
+  cleanup()
+
+  return ret
 
 
 def arg_parser():
@@ -144,6 +162,10 @@ def arg_parser():
       default=[],
       help='One or more contexts used to select build goals from the '
       'configuration.')
+  parser.add_argument(
+      '--use_rbe',
+      action='store_true',
+      help='Executes the build on RBE')
   return parser
 
 
@@ -182,6 +204,7 @@ def main():
       dist_dir=args['dist_dir'],
       build_id=args['build_id'],
       max_cpus=args['max_cpus'],
+      use_rbe=args['use_rbe'],
       build_goals=build_goals)
 
 
