@@ -77,8 +77,8 @@ def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
   cleanup = lambda: None
   nsjail_wrapper = []
   if use_rbe:
-    cleanup = rbe.setup()
-    env.extend(rbe.get_env())
+    cleanup = rbe.setup(env)
+    env = rbe.prepare_env(env)
     extra_nsjail_args.extend(rbe.get_extra_nsjail_args())
     readonly_bind_mounts.extend(rbe.get_readonlybind_mounts())
     nsjail_wrapper = rbe.get_nsjail_bin_wrapper()
