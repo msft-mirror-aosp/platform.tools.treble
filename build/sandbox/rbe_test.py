@@ -24,8 +24,9 @@ class RBETest(unittest.TestCase):
     self.assertEqual(rbe.get_extra_nsjail_args()[0], '--disable_clone_newnet')
 
   def testEnv(self):
-    env = rbe.get_env()
+    env = rbe.prepare_env(env=["RBE_instance=test_instance", "RBE_service=test_service"])
     self.assertIn('USE_RBE=true', env)
+    self.assertIn('RBE_instance=test_instance', env)
 
 
 if __name__ == '__main__':
