@@ -46,19 +46,56 @@ def get_nsjail_bin_wrapper():
   return ['netns-exec', 'rbe-closed-ns']
 
 
-def environ():
-  """Returns the environment variables that configure RBE."""
-  env = _RBE_ENV.copy()
+def env_array_to_dict(env_array):
+  """Converts an env var array to a dict.
+
+  Args:
+    env: An array of environment variables in the `var=val` syntax.
+
+  Returns:
+    A dict of string values keyed by string names.
+  """
+  env_dict = {}
+  for var in env_array:
+    var = var.split('=')
+    name = var[0]
+    value = var[1]
+    env_dict[name] = value
+  return env_dict
+
+def prepare_env(env):
+  """Prepares an env dict for enabling RBE.
+
+  Checks that all environment variables required to be set
+  by the user are defined and sets some default
+  values for optional environment variables
+
+  Args:
+    env: An array of environment variables in the `var=val` syntax.
+
+  Returns:
+    An array of environment variables in the `var=val` syntax.
+  """
+  # Start with the default values
+  prepared_env = _RBE_ENV.copy()
+
+  # Host environment variables take precedence over defaults.
   for k,v in os.environ.items():
-    # Environment variables take precedence over defaults.
     if k.startswith('RBE_'):
-      env[k] = v
-  return env
+      prepared_env[k] = v
 
+  # Input parameter variables take precedence over everything else
+  prepared_env.update(env_array_to_dict(env))
 
-def get_env():
-  """Returns a dictionary of extra environment variables"""
-  return ['%s=%s' % (k,v) for k,v in environ().items()]
+  if 'RBE_instance' not in prepared_env:
+    raise EnvironmentError('The RBE_instance environment '
+                           'variables must be defined')
+
+  if 'RBE_service' not in prepared_env:
+    raise EnvironmentError('The RBE_service environment '
+                           'variables must be defined')
+
+  return ['%s=%s' % (k,v) for k,v in prepared_env.items()]
 
 
 def get_readonlybind_mounts():
@@ -78,24 +115,25 @@ def get_extra_nsjail_args():
   return ['--disable_clone_newnet']
 
 
-def setup(build_log=subprocess.DEVNULL):
+def setup(env, build_log=subprocess.DEVNULL):
   """Prerequisite for having RBE enabled for the build.
 
   Calls RBE http proxy in a separate network namespace.
 
   Args:
+    env: An array of environment variables in the `var=val` syntax.
     build_log: a file handle to write executed commands to.
 
   Returns:
     A cleanup function to be called after the build is done.
   """
-  rbe_instance = os.getenv('RBE_instance')
-  if not rbe_instance:
-    raise EnvironmentError('The RBE_instance environment '
-                           'variables must be defined')
+  env_dict = env_array_to_dict(env)
 
   # Create the RBE http proxy whitelist file.
-  rbe_service = os.getenv('RBE_service')
+  if 'RBE_service' in env_dict:
+    rbe_service = env_dict['RBE_service']
+  else:
+    rbe_service = os.getenv('RBE_service')
   if not rbe_service:
     raise EnvironmentError('The RBE_service environment '
                            'variables must be defined')
