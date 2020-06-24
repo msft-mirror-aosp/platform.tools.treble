@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Mounts all the projects required by a selected Android target.
+"""Mounts all the projects required by a selected Build target.
 
 For details on how filesystem overlays work see the filesystem overlays
 section of the README.md.
@@ -304,13 +304,12 @@ class BindOverlay(object):
     """
     return self._bind_mounts
 
-  def _GetReadWriteFunction(self, android_target, source_dir, cfg):
+  def _GetReadWriteFunction(self, build_config, source_dir):
     """Returns a function that tells you how to mount a path.
 
     Args:
-      android_target: A string with the name of the android target to be prepared.
+      build_target: A config.BuildConfig instance the build target to be prepared.
       source_dir: A string with the path to the Android platform source.
-      cfg: A config.Config instance.
 
     Returns:
       A function that takes a string path as an input and returns
@@ -320,25 +319,19 @@ class BindOverlay(object):
 
     # The read/write allowlist provides paths relative to the source dir. It
     # needs to be updated with absolute paths to make lookup possible.
-    rw_allowlist = []
-    rw_allowlist_map = cfg.get_rw_allowlist_map()
-    if android_target in rw_allowlist_map and rw_allowlist_map[android_target]:
-      rw_allowlist = rw_allowlist_map[android_target]
-    rw_allowlist = {os.path.join(source_dir, p) for p in rw_allowlist}
-
-    allow_readwrite_all = cfg.get_allow_readwrite_all(android_target)
+    rw_allowlist = {os.path.join(source_dir, p) for p in build_config.allow_readwrite}
 
     def AllowReadWrite(path):
-      return allow_readwrite_all or path in rw_allowlist
+      return build_config.allow_readwrite_all or path in rw_allowlist
 
     return AllowReadWrite
 
 
-  def _GetAllowedProjects(self, build_target, cfg):
+  def _GetAllowedProjects(self, build_config):
     """Returns a set of paths that are allowed to contain .git projects.
 
     Args:
-      build_target: A string with the name of the build target to be prepared.
+      build_target: A config.BuildConfig instance the build target to be prepared.
       cfg: A config.Config instance.
 
     Returns:
@@ -346,10 +339,9 @@ class BindOverlay(object):
         project path not in this set should be excluded from overlaying.
       Otherwise: None
     """
-    allowed_projects_file = cfg.get_allowed_projects_file(build_target)
-    if not allowed_projects_file:
+    if not build_config.allowed_projects_file:
       return None
-    allowed_projects = ET.parse(allowed_projects_file)
+    allowed_projects = ET.parse(build_config.allowed_projects_file)
     paths = set()
     for child in allowed_projects.getroot().findall("project"):
       paths.add(child.attrib.get("path", child.attrib["name"]))
@@ -389,15 +381,13 @@ class BindOverlay(object):
     # seems appropriate
     skip_subdirs = set(whiteout_list)
 
-    android_target = cfg.get_build_config_android_target(build_target)
+    build_config = cfg.get_build_config(build_target)
 
-    allowed_read_write = self._GetReadWriteFunction(android_target, source_dir, cfg)
-
-    allowed_projects = self._GetAllowedProjects(build_target, cfg)
+    allowed_read_write = self._GetReadWriteFunction(build_config, source_dir)
+    allowed_projects = self._GetAllowedProjects(build_config)
 
     overlay_dirs = []
-    overlay_map = cfg.get_overlay_map()
-    for overlay_dir in overlay_map[android_target]:
+    for overlay_dir in build_config.overlays:
       overlay_dir = os.path.join(source_dir, 'overlays', overlay_dir)
       overlay_dirs.append(overlay_dir)
 
@@ -406,18 +396,16 @@ class BindOverlay(object):
         skip_subdirs, allowed_projects, allowed_read_write)
 
     # If specified for this target, create a custom filesystem view
-    fs_view_map = cfg.get_fs_view_map()
-    if android_target in fs_view_map:
-      for path_relative_from, path_relative_to in fs_view_map[android_target]:
-        path_from = os.path.join(source_dir, path_relative_from)
-        if os.path.isfile(path_from) or os.path.isdir(path_from):
-          path_to = os.path.join(destination_dir, path_relative_to)
-          if allowed_read_write(path_from):
-            self._AddBindMount(path_from, path_to, False)
-          else:
-            self._AddBindMount(path_from, path_to, True)
+    for path_relative_from, path_relative_to in build_config.views:
+      path_from = os.path.join(source_dir, path_relative_from)
+      if os.path.isfile(path_from) or os.path.isdir(path_from):
+        path_to = os.path.join(destination_dir, path_relative_to)
+        if allowed_read_write(path_from):
+          self._AddBindMount(path_from, path_to, False)
         else:
-          raise ValueError("Path '%s' must be a file or directory" % path_from)
+          self._AddBindMount(path_from, path_to, True)
+      else:
+        raise ValueError("Path '%s' must be a file or directory" % path_from)
 
     self._overlay_dirs = overlay_dirs
     if not self._quiet:
