@@ -39,7 +39,7 @@ _META_MOUNT_POINT = '/meta'
 
 _CHROOT_MOUNT_POINTS = [
   'bin', 'sbin',
-  'etc/alternatives', 'etc/default' 'etc/perl',
+  'etc/alternatives', 'etc/default', 'etc/perl',
   'etc/ssl', 'etc/xml',
   'lib', 'lib32', 'lib64', 'libx32',
   'usr',
