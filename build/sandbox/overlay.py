@@ -308,7 +308,8 @@ class BindOverlay(object):
     """Returns a function that tells you how to mount a path.
 
     Args:
-      build_target: A config.BuildConfig instance the build target to be prepared.
+      build_config: A config.BuildConfig instance of the build target to be
+                    prepared.
       source_dir: A string with the path to the Android platform source.
 
     Returns:
@@ -331,8 +332,8 @@ class BindOverlay(object):
     """Returns a set of paths that are allowed to contain .git projects.
 
     Args:
-      build_target: A config.BuildConfig instance the build target to be prepared.
-      cfg: A config.Config instance.
+      build_config: A config.BuildConfig instance of the build target to be
+                    prepared.
 
     Returns:
       If the target has an allowed projects file: a set of paths. Any .git
