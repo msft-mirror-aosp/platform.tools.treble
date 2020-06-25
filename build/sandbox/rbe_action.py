@@ -34,10 +34,10 @@ def main():
       help='Prints the executed commands')
   args = parser.parse_args()
 
-  cleanup = rbe.setup(sys.stdout if args.print else subprocess.DEVNULL)
+  cleanup = rbe.setup([], sys.stdout if args.print else subprocess.DEVNULL)
   src_root = os.path.normpath(
       os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../..'))
-  env = rbe.environ()
+  env = rbe.env_array_to_dict(rbe.prepare_env([]))
   env['PATH'] = os.getenv('PATH')
   for d in ['FLAG_log_dir', 'RBE_output_dir', 'RBE_proxy_log_dir']:
     env[d] = '/tmp'  # We want the logs in /tmp instead of out.
