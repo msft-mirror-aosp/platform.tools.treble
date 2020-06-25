@@ -149,7 +149,7 @@ class BuildConfig(object):
     # A valid build_config is required to have at least one goal.
     if not self.build_goals:
       raise ValueError(
-          f'Error: build_config {self.name} must have at least one goal')
+          'Error: build_config {} must have at least one goal'.format(self.name))
     if not self.name:
       raise ValueError('Error build_config must have a name.')
 
@@ -506,7 +506,7 @@ class Config:
 
 
   def get_build_config(self, build_target):
-    return self._build_config_map.get(build_target)
+    return self._build_config_map[build_target]
 
 
 def factory(config_filename):
