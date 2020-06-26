@@ -55,3 +55,12 @@ set +e
 
 echo "build_android_target.sh: $BUILD_COMMAND"
 $BUILD_COMMAND
+BUILD_COMMAND_EXIT_VALUE=$?
+
+# Collect RBE metrics if enabled
+if [[ -n "${USE_RBE}" && -n "${RBE_DIR}" ]]; then
+  echo "build_android_target.sh: $RBE_DIR/dumpstats"
+  $RBE_DIR/dumpstats
+fi
+
+exit $BUILD_COMMAND_EXIT_VALUE
