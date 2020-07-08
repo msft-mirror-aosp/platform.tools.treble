@@ -17,6 +17,7 @@ import argparse
 import os
 from . import config
 from . import nsjail
+from . import rbe
 
 _DEFAULT_COMMAND_WRAPPER = \
   '/src/tools/treble/build/sandbox/build_android_target.sh'
@@ -24,8 +25,8 @@ _DEFAULT_COMMAND_WRAPPER = \
 
 def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
           max_cpus, build_goals, config_file=None,
-          command_wrapper=_DEFAULT_COMMAND_WRAPPER,
-          readonly_bind_mount=None):
+          command_wrapper=_DEFAULT_COMMAND_WRAPPER, use_rbe=False,
+          readonly_bind_mount=None, env=[]):
   """Builds an Android target in a secure sandbox.
 
   Args:
@@ -40,7 +41,10 @@ def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
       build command.
     config_file: A string path to an overlay configuration file.
     command_wrapper: A string path to the command wrapper.
+    use_rbe: If true, will attempt to use RBE for the build.
     readonly_bind_mount: A string path to a path to be mounted as read-only.
+    env: An array of environment variables to define in the NsJail sandbox in the
+      `var=val` syntax.
 
   Returns:
     A list of commands that were executed. Each command is a list of strings.
@@ -48,6 +52,9 @@ def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
   if config_file:
     cfg = config.Config(config_file)
     android_target = cfg.get_build_config_android_target(build_target)
+    if cfg.has_tag(build_target, 'skip'):
+      print('Warning: skipping build_target "{}" due to tag being set'.format(build_target))
+      return []
   else:
     android_target = build_target
 
@@ -66,7 +73,17 @@ def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
   if readonly_bind_mount:
     readonly_bind_mounts = [readonly_bind_mount]
 
-  return nsjail.run(
+  extra_nsjail_args = []
+  cleanup = lambda: None
+  nsjail_wrapper = []
+  if use_rbe:
+    cleanup = rbe.setup(env)
+    env = rbe.prepare_env(env)
+    extra_nsjail_args.extend(rbe.get_extra_nsjail_args())
+    readonly_bind_mounts.extend(rbe.get_readonlybind_mounts())
+    nsjail_wrapper = rbe.get_nsjail_bin_wrapper()
+
+  ret = nsjail.run(
       nsjail_bin=nsjail_bin,
       chroot=chroot,
       overlay_config=config_file,
@@ -76,7 +93,14 @@ def build(build_target, variant, nsjail_bin, chroot, dist_dir, build_id,
       dist_dir=dist_dir,
       build_id=build_id,
       max_cpus=max_cpus,
-      readonly_bind_mounts=readonly_bind_mounts)
+      extra_nsjail_args=extra_nsjail_args,
+      readonly_bind_mounts=readonly_bind_mounts,
+      env=env,
+      nsjail_wrapper=nsjail_wrapper)
+
+  cleanup()
+
+  return ret
 
 
 def arg_parser():
@@ -101,9 +125,6 @@ def arg_parser():
       'NsJail sandbox.')
   parser.add_argument(
       '--config_file',
-      # The old name is deprecated. We'll temporarily keep it
-      # until the systems that use the old name are updated.
-      '--overlay_config',
       required=True,
       help='Path to the overlay configuration file.')
   parser.add_argument(
@@ -115,6 +136,13 @@ def arg_parser():
       '--readonly_bind_mount',
       help='Path to the a path to be mounted as readonly inside the secure '
       'build sandbox.')
+  parser.add_argument(
+      '--env', '-e',
+      type=str,
+      default=[],
+      action='append',
+      help='Specify an environment variable to the NSJail sandbox. Can be specified '
+      'muliple times. Syntax: var_name=value')
   parser.add_argument(
       '--dist_dir',
       help='Path to the Android dist directory. This is where '
@@ -134,6 +162,10 @@ def arg_parser():
       default=[],
       help='One or more contexts used to select build goals from the '
       'configuration.')
+  parser.add_argument(
+      '--use_rbe',
+      action='store_true',
+      help='Executes the build on RBE')
   return parser
 
 
@@ -168,9 +200,11 @@ def main():
       config_file=args['config_file'],
       command_wrapper=args['command_wrapper'],
       readonly_bind_mount=args['readonly_bind_mount'],
+      env=args['env'],
       dist_dir=args['dist_dir'],
       build_id=args['build_id'],
       max_cpus=args['max_cpus'],
+      use_rbe=args['use_rbe'],
       build_goals=build_goals)
 
 

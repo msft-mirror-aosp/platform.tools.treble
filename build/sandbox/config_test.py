@@ -25,12 +25,17 @@ _TEST_CONFIG_XML = """<config>
     </build_config>
   </target>
   <target name="android_target_2" tags="cool,hot">
-    <build_config>
+    <fast_merge_config framework_images="image1,image2"
+      misc_info_keys="misc_info_keys.txt"/>
+    <goal name="common_goal"/>
+    <build_config tags="warm">
       <goal name="droid"/>
       <goal name="dist"/>
       <goal name="goal_for_android_target_2"/>
     </build_config>
-    <build_config name="build_target_2">
+    <build_config name="build_target_2" tags="dry">
+      <fast_merge_config framework_images="bt1,bt2"
+        misc_info_keys="misc_info_keys_2.txt"/>
       <goal name="droid"/>
       <goal name="VAR=a"/>
     </build_config>
@@ -38,6 +43,11 @@ _TEST_CONFIG_XML = """<config>
   <target name="android_target_3" tags="">
     <build_config>
       <goal name="droid"/>
+    </build_config>
+  </target>
+  <target name="some_target" android_target="android_target_4">
+    <goal name="droid"/>
+    <build_config>
     </build_config>
   </target>
 </config>
@@ -79,7 +89,7 @@ class ConfigTest(unittest.TestCase):
       test_config.write(_TEST_CONFIG_XML)
       test_config.flush()
       cfg = config.factory(test_config.name)
-      self.assertEqual(
+      self.assertListEqual(
           cfg.get_available_build_targets(),
           # Sorted; not in document order.
           [
@@ -87,6 +97,7 @@ class ConfigTest(unittest.TestCase):
               'android_target_2',
               'android_target_3',
               'build_target_2',
+              'some_target',
           ])
 
   def testBuildTargetTags(self):
@@ -95,10 +106,12 @@ class ConfigTest(unittest.TestCase):
       test_config.flush()
       cfg = config.factory(test_config.name)
 
-      self.assertEqual(cfg.get_tags('android_target_1'), set())
-      self.assertEqual(cfg.get_tags('android_target_2'), set(['cool', 'hot']))
-      self.assertEqual(cfg.get_tags('build_target_2'), set(['cool', 'hot']))
-      self.assertEqual(cfg.get_tags('android_target_3'), set())
+      self.assertSetEqual(cfg.get_tags('android_target_1'), set())
+      self.assertSetEqual(
+          cfg.get_tags('android_target_2'), set(['cool', 'hot', 'warm']))
+      self.assertSetEqual(
+          cfg.get_tags('build_target_2'), set(['cool', 'hot', 'dry']))
+      self.assertSetEqual(cfg.get_tags('android_target_3'), set())
 
       self.assertFalse(cfg.has_tag('android_target_1', 'cool'))
       self.assertFalse(cfg.has_tag('android_target_1', 'hot'))
@@ -137,6 +150,11 @@ class ConfigTest(unittest.TestCase):
           cfg.get_build_config_android_target('build_target_2'),
           'android_target_2')
 
+      # Test overriding android_target property
+      self.assertEqual(
+          cfg.get_build_config_android_target('some_target'),
+          'android_target_4')
+
   def testBuildTargetToBuildGoals(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
       test_config.write(_TEST_CONFIG_XML)
@@ -152,12 +170,12 @@ class ConfigTest(unittest.TestCase):
       # goal_for_android_target_2.
       self.assertEqual(
           cfg.get_build_goals('android_target_2'),
-          ['droid', 'dist', 'goal_for_android_target_2'])
+          ['common_goal', 'droid', 'dist', 'goal_for_android_target_2'])
 
       # Test that build_target build_target_2 has goals droid and VAR=a.
       self.assertEqual(
           cfg.get_build_goals('build_target_2'),
-          ['droid', 'VAR=a'])
+          ['common_goal', 'droid', 'VAR=a'])
 
   def testBuildTargetToBuildGoalsWithContexts(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
@@ -203,18 +221,25 @@ class ConfigTest(unittest.TestCase):
 
   def testAllowReadWriteAll(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
-      test_config.write(
-        '<?xml version="1.0" encoding="UTF-8" ?>'
-        '<config>'
-        '  <target name="target_allowed" allow_readwrite_all="true">'
-        '    <allow_readwrite_all/>'
-        '  </target>'
-        '  <target name="target_not_allowed">'
-        '  </target>'
-        '  <target name="target_also_not_allowed" allow_readwrite_all="false">'
-        '  </target>'
-        '</config>'
-        )
+      test_config.write("""<?xml version="1.0" encoding="UTF-8" ?>
+        <config>
+          <target name="target_allowed" allow_readwrite_all="true">
+            <build_config>
+              <goal name="droid"/>
+            </build_config>
+            <allow_readwrite_all/>
+          </target>
+          <target name="target_not_allowed">
+            <build_config>
+              <goal name="droid"/>
+            </build_config>
+          </target>
+          <target name="target_also_not_allowed" allow_readwrite_all="false">
+            <build_config>
+              <goal name="droid"/>
+            </build_config>
+          </target>
+        </config>""")
       test_config.flush()
       cfg = config.factory(test_config.name)
 
@@ -227,28 +252,45 @@ class ConfigTest(unittest.TestCase):
   def testAllowedProjectsFile(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
       test_config.write(
-        '<?xml version="1.0" encoding="UTF-8" ?>'
-        '<config>'
-        '  <target name="target_name">'
-        '    <build_config allowed_projects_file="path/to/default/build/config/allowed_projects.xml">'
-        '      <goal name="build_goal"/>'
-        '    </build_config>'
-        '    <build_config name="has_allowed_projects_file" allowed_projects_file="path/to/named/build/config/allowed_projects.xml">'
-        '      <goal name="build_goal"/>'
-        '    </build_config>'
-        '    <build_config name="no_allowed_projects_file">'
-        '      <goal name="build_goal"/>'
-        '    </build_config>'
-        '  </target>'
-        '</config>'
-        )
+          '<?xml version="1.0" encoding="UTF-8" ?>'
+          '<config>'
+          '  <target name="target_name">'
+          '    <build_config allowed_projects_file="path/to/default/build/config/allowed_projects.xml">'
+          '      <goal name="build_goal"/>'
+          '    </build_config>'
+          '    <build_config name="has_allowed_projects_file" allowed_projects_file="path/to/named/build/config/allowed_projects.xml">'
+          '      <goal name="build_goal"/>'
+          '    </build_config>'
+          '    <build_config name="no_allowed_projects_file">'
+          '      <goal name="build_goal"/>'
+          '    </build_config>'
+          '  </target>'
+          '</config>')
       test_config.flush()
       cfg = config.factory(test_config.name)
 
-      self.assertEqual(cfg.get_allowed_projects_file('target_name'), 'path/to/default/build/config/allowed_projects.xml')
-      self.assertEqual(cfg.get_allowed_projects_file('has_allowed_projects_file'), 'path/to/named/build/config/allowed_projects.xml')
-      self.assertIsNone(cfg.get_allowed_projects_file('no_allowed_projects_file'))
+      self.assertEqual(
+          cfg.get_allowed_projects_file('target_name'),
+          'path/to/default/build/config/allowed_projects.xml')
+      self.assertEqual(
+          cfg.get_allowed_projects_file('has_allowed_projects_file'),
+          'path/to/named/build/config/allowed_projects.xml')
+      self.assertIsNone(
+          cfg.get_allowed_projects_file('no_allowed_projects_file'))
 
+  def testFastMergeConfig(self):
+    with tempfile.NamedTemporaryFile('w+t') as test_config:
+      test_config.write(_TEST_CONFIG_XML)
+      test_config.flush()
+      cfg = config.factory(test_config.name)
+
+      bc_at2 = cfg.get_build_config('android_target_2')
+      self.assertEqual(bc_at2.fmc_framework_images, 'image1,image2')
+      self.assertEqual(bc_at2.fmc_misc_info_keys, 'misc_info_keys.txt')
+
+      bc_bt2 = cfg.get_build_config('build_target_2')
+      self.assertEqual(bc_bt2.fmc_framework_images, 'bt1,bt2')
+      self.assertEqual(bc_bt2.fmc_misc_info_keys, 'misc_info_keys_2.txt')
 
 if __name__ == '__main__':
   unittest.main()
