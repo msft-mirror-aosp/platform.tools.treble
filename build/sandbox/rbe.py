@@ -129,7 +129,7 @@ def setup(env, build_log=subprocess.DEVNULL):
   """
   env_dict = env_array_to_dict(env)
 
-  # Create the RBE http proxy whitelist file.
+  # Create the RBE http proxy allowlist file.
   if 'RBE_service' in env_dict:
     rbe_service = env_dict['RBE_service']
   else:
@@ -139,13 +139,13 @@ def setup(env, build_log=subprocess.DEVNULL):
                            'variables must be defined')
   if ':' in rbe_service:
     rbe_service = rbe_service.split(':', 1)[0]
-  rbe_whitelist = [
+  rbe_allowlist = [
       rbe_service,
       'oauth2.googleapis.com',
       'accounts.google.com',
   ]
-  with open('/tmp/rbe_whitelist.txt', 'w+') as t:
-    for w in rbe_whitelist:
+  with open('/tmp/rbe_allowlist.txt', 'w+') as t:
+    for w in rbe_allowlist:
       t.write(w + '\n')
 
   # Restart RBE http proxy.
