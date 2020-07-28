@@ -27,6 +27,9 @@ class RBETest(unittest.TestCase):
     env = rbe.prepare_env(env=["RBE_instance=test_instance", "RBE_service=test_service"])
     self.assertIn('USE_RBE=true', env)
     self.assertIn('RBE_instance=test_instance', env)
+    self.assertIn('RBE_JAVAC=true', env)
+    self.assertIn('RBE_D8=true', env)
+    self.assertIn('RBE_R8=true', env)
 
 
 if __name__ == '__main__':

@@ -38,6 +38,9 @@ _RBE_ENV = {
     'RBE_proxy_log_dir': 'out',
     'RBE_cpp_dependency_scanner_plugin': os.path.join(TOOLS_DIR, 'dependency_scanner_go_plugin.so'),
     'RBE_re_proxy': os.path.join(TOOLS_DIR, 'reproxy'),
+    'RBE_JAVAC': 'true',
+    'RBE_D8': 'true',
+    'RBE_R8': 'true',
 }
 
 
