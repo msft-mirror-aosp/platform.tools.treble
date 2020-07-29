@@ -114,7 +114,7 @@ class BindOverlay(object):
       current_dir_destination = os.path.normpath(
         os.path.join(destination_dir, current_dir_relative))
 
-      if '.git' in subdirs:
+      if '.git' in subdirs or '.git' in files:
         # The current dir is a git project
         # so just bind mount it
         del subdirs[:]
@@ -138,7 +138,7 @@ class BindOverlay(object):
         del subdirs[:]
         continue
 
-      if '.git' in subdirs:
+      if '.git' in subdirs or '.git' in files:
         del subdirs[:]
         continue
 
