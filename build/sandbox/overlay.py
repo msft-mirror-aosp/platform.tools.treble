@@ -209,7 +209,7 @@ class BindOverlay(object):
     if os.path.exists(repo_origin):
       repo_destination = os.path.normpath(
         os.path.join(destination_dir, '.repo'))
-      self._AddBindMount(repo_origin, repo_destination, False)
+      self._AddBindMount(repo_origin, repo_destination, True)
       skip_subdirs.add(repo_origin)
 
     return skip_subdirs
