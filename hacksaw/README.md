@@ -41,7 +41,7 @@ the git projects checked out for editing.
 
 ```
 $ hacksaw codebase add super-large-codebase ~/super-large-codebase
-$ hacksaw codebase set-default super-large-codebase
+$ hacksaw codebase default super-large-codebase
 $ hacksaw workspace new big-feature
 Created my-hot-new-feature on super-large-codease at ~/hacksaw/my-hot-new-feature
 $ hacksaw edit ~/hacksaw/big-feature/projectA/new-module.go
@@ -151,7 +151,6 @@ its read-only bind mount gets replaced by a writable Git worktree.
 
 ## What are the known issues?
 
-* The "default codebase" option can't be used for creating workspaces yet.
 * Some repo commands don't work yet. Namely: `repo start` and `repo upload`.
   So at the moment you can only upload to Gerrit [using git
   push](https://gerrit-review.googlesource.com/Documentation/user-upload.html#_git_push).
