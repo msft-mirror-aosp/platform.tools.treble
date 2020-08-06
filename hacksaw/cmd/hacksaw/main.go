@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
-	"path"
+	"path/filepath"
 
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/bind"
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/client"
@@ -55,7 +55,7 @@ func getWorkspaceTopDir() (string, error) {
 	}
 	// The hacksaw mount daemon requires all mounts
 	// to be contained in a directory named "hacksaw"
-	return path.Join(home, "hacksaw"), nil
+	return filepath.EvalSymlinks(filepath.Join(home, "hacksaw"))
 }
 
 func run() error {

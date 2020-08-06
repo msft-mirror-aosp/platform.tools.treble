@@ -313,7 +313,7 @@ func TestEdit(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	editPath := path.Join(workspaceDir, "project", "testfile")
+	editPath := path.Join(workspaceDir, "project")
 	branchName, wsProjectDir, err := ws.Edit(editPath)
 	if err != nil {
 		t.Error(err)
