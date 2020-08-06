@@ -15,16 +15,31 @@
 package bind
 
 import (
+	"io/ioutil"
+	"os"
+	"path"
 	"reflect"
 	"testing"
 )
 
 func TestServerBind(t *testing.T) {
+	mountTempDir, err := ioutil.TempDir("", "mount")
+	if err != nil {
+		t.Error(err)
+	}
 	fakeBinder := NewFakePathBinder()
 	server := NewServer(fakeBinder)
+	roSourceDir := path.Join(mountTempDir, "path/to/readonly/source")
+	if err = os.MkdirAll(roSourceDir, os.ModePerm); err != nil {
+		t.Error(err)
+	}
+	roDestDir := path.Join(mountTempDir, "path/to/hacksaw/readonly/destination")
+	if err = os.MkdirAll(roDestDir, os.ModePerm); err != nil {
+		t.Error(err)
+	}
 	bindROArgs := BindReadOnlyArgs{
-		Source:      "/path/to/readonly/source",
-		Destination: "/path/to/hacksaw/readonly/destination",
+		Source:      roSourceDir,
+		Destination: roDestDir,
 	}
 	var bindROReply BindReadOnlyReply
 	if err := server.BindReadOnly(&bindROArgs, &bindROReply); err != nil {
@@ -33,9 +48,17 @@ func TestServerBind(t *testing.T) {
 	if bindROReply.Err != "" {
 		t.Error(bindROReply.Err)
 	}
+	rwSourceDir := path.Join(mountTempDir, "path/to/readwrite/source")
+	if err = os.MkdirAll(rwSourceDir, os.ModePerm) ; err != nil {
+		t.Error(err)
+	}
+	rwDestDir := path.Join(mountTempDir, "path/to/hacksaw/readwrite/destination")
+	if err = os.MkdirAll(rwDestDir, os.ModePerm); err != nil {
+		t.Error(err)
+	}
 	bindRWArgs := BindReadWriteArgs{
-		Source:      "/path/to/readwrite/source",
-		Destination: "/path/to/hacksaw/readwrite/destination",
+		Source:      rwSourceDir,
+		Destination: rwDestDir,
 	}
 	var bindRWReply BindReadWriteReply
 	if err := server.BindReadWrite(&bindRWArgs, &bindRWReply); err != nil {
@@ -46,7 +69,7 @@ func TestServerBind(t *testing.T) {
 	}
 	var listArgs ListArgs
 	var listReply ListReply
-	err := server.List(&listArgs, &listReply)
+	err = server.List(&listArgs, &listReply)
 	if err != nil {
 		t.Error(err)
 	}
@@ -54,15 +77,15 @@ func TestServerBind(t *testing.T) {
 		t.Error(listReply.Err)
 	}
 	expectedList := []string{
-		"/path/to/hacksaw/readonly/destination",
-		"/path/to/hacksaw/readwrite/destination",
+		roDestDir,
+		rwDestDir,
 	}
 	if !reflect.DeepEqual(listReply.BindList, expectedList) {
 		t.Errorf("Bind list %v is different than expected bind %v",
 			listReply.BindList, expectedList)
 	}
 	unbindArgs := UnbindArgs{
-		Destination: "/path/to/hacksaw/readwrite/destination",
+		Destination: rwDestDir,
 	}
 	var unbindReply UnbindReply
 	if err := server.Unbind(&unbindArgs, &unbindReply); err != nil {
@@ -79,7 +102,7 @@ func TestServerBind(t *testing.T) {
 		t.Error(listReply.Err)
 	}
 	expectedList = []string{
-		"/path/to/hacksaw/readonly/destination",
+		roDestDir,
 	}
 	if !reflect.DeepEqual(listReply.BindList, expectedList) {
 		t.Errorf("Bind list %v is different than expected bind %v",

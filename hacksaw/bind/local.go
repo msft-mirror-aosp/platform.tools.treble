@@ -16,7 +16,7 @@ package bind
 
 import (
 	"fmt"
-	"path"
+	"path/filepath"
 	"syscall"
 
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/mount"
@@ -40,9 +40,9 @@ func NewFakePathBinder() PathBinder {
 }
 
 func (p localBinder) checkValidPath(inPath string) error {
-	for dir := path.Dir(inPath); dir != "." && dir != "/"; dir = path.Dir(dir) {
+	for dir := filepath.Dir(inPath); dir != "." && dir != "/"; dir = filepath.Dir(dir) {
 		// Only allow mounts in hacksaw path
-		if path.Base(dir) == "hacksaw" {
+		if filepath.Base(dir) == "hacksaw" {
 			return nil
 		}
 	}
@@ -51,7 +51,15 @@ func (p localBinder) checkValidPath(inPath string) error {
 
 func (p localBinder) BindReadOnly(source string, destination string) error {
 	// TODO: check valid path considering sym links
-	err := p.mounter.Mount(source, destination,
+	source, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		return err
+	}
+	destination, err = filepath.EvalSymlinks(destination)
+	if err != nil {
+		return err
+	}
+	err = p.mounter.Mount(source, destination,
 		"bind", syscall.MS_BIND, "")
 	if err != nil {
 		return err
@@ -63,14 +71,26 @@ func (p localBinder) BindReadOnly(source string, destination string) error {
 
 func (p localBinder) BindReadWrite(source string, destination string) error {
 	// TODO: check valid path considering sym links
-	err := p.mounter.Mount(source, destination,
+	source, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		return err
+	}
+	destination, err = filepath.EvalSymlinks(destination)
+	if err != nil {
+		return err
+	}
+	err = p.mounter.Mount(source, destination,
 		"bind", syscall.MS_BIND, "")
 	return err
 }
 
 func (p localBinder) Unbind(destination string) error {
 	// TODO: check valid path considering sym links
-	err := p.mounter.Unmount(destination, syscall.MNT_DETACH)
+	destination, err := filepath.EvalSymlinks(destination)
+	if err != nil {
+		return err
+	}
+	err = p.mounter.Unmount(destination, syscall.MNT_DETACH)
 	return err
 }
 
