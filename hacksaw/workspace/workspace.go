@@ -17,6 +17,7 @@ package workspace
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +27,7 @@ import (
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/codebase"
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/config"
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/file"
+	"android.googlesource.com/platform/tools/treble.git/hacksaw/git"
 )
 
 type Workspace struct {
@@ -101,6 +103,94 @@ func (w Workspace) List() map[string]string {
 	return list
 }
 
+func (w Workspace) DetachGitWorktrees(workspaceName string, unbindList []string) error {
+	workspaceDir, err := w.GetDir(workspaceName)
+	if err != nil {
+		return err
+	}
+	workspaceDir, err = filepath.Abs(workspaceDir)
+	if err != nil {
+		return err
+	}
+	//resolve all symlinks so it can be
+	//matched to mount paths
+	workspaceDir, err = filepath.EvalSymlinks(workspaceDir)
+	if err != nil {
+		return err
+	}
+	codebaseName, err := w.GetCodebase(workspaceName)
+	if err != nil {
+		return err
+	}
+	codebaseDir, err := codebase.GetDir(codebaseName)
+	if err != nil {
+		return err
+	}
+	lister := git.NewRepoLister()
+	gitProjects, err := lister.List(codebaseDir)
+	if err != nil {
+		return err
+	}
+	gitWorktrees := make(map[string]bool)
+	for _, project := range gitProjects {
+		gitWorktrees[project] = true
+	}
+	//projects that were unbound were definitely
+	//never git worktrees
+	for _, unbindPath := range unbindList {
+		project, err := filepath.Rel(workspaceDir, unbindPath)
+		if err != nil {
+			return err
+		}
+		if _, ok := gitWorktrees[project]; ok {
+			gitWorktrees[project] = false
+		}
+	}
+	for project, isWorktree := range gitWorktrees {
+		if ! isWorktree {
+			continue
+		}
+		codebaseProject := filepath.Join(codebaseDir, project)
+		workspaceProject := filepath.Join(workspaceDir, project)
+		_, err = os.Stat(workspaceProject)
+		if err == nil {
+			//proceed to detach
+		} else if os.IsNotExist(err) {
+			//just skip if it doesn't exist
+			continue
+		} else {
+			return err
+		}
+		contents, err := ioutil.ReadDir(workspaceProject)
+		if err != nil {
+			return err
+		}
+		if len(contents) == 0 {
+			//empty directory, not even a .git
+			//not a wortree
+			continue
+		}
+		fmt.Print(".")
+		cmd := exec.Command("git",
+			"-C", codebaseProject,
+			"worktree", "remove", "--force", workspaceProject)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("Command\n%s\nfailed with the following:\n%s\n%s",
+				cmd.String(), err.Error(), output)
+		}
+		cmd = exec.Command("git",
+			"-C", codebaseProject,
+			"branch", "--delete", "--force", workspaceName )
+		output, err = cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("Command\n%s\nfailed with the following:\n%s\n%s",
+				cmd.String(), err.Error(), output)
+		}
+	}
+	return nil
+}
+
 func (w Workspace) Remove(remove string) (*config.Config, error) {
 	cfg := config.GetConfig()
 	_, ok := cfg.Workspaces[remove]
@@ -111,14 +201,19 @@ func (w Workspace) Remove(remove string) (*config.Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	if _, err = w.composer.Dismantle(workspaceDir); err != nil {
+	unbindList, err := w.composer.Dismantle(workspaceDir)
+	if err != nil {
 		return cfg, err
 	}
+	fmt.Print("Detaching worktrees")
+	if err = w.DetachGitWorktrees(remove, unbindList); err != nil {
+		return cfg, err
+	}
+	fmt.Print("\n")
 	fmt.Println("Removing files")
 	if err = os.RemoveAll(workspaceDir); err != nil {
 		return cfg, err
 	}
-	fmt.Println("Files removed")
 	delete(cfg.Workspaces, remove)
 	return cfg, err
 }

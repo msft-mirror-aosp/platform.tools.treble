@@ -330,4 +330,17 @@ func TestEdit(t *testing.T) {
 		t.Errorf("Command\n%s\nfailed with the following:\n%s\n%s",
 			cmd.String(), err.Error(), output)
 	}
+	//Recreate workspace and try editing again
+	_, err = ws.Remove("test-workspace")
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = ws.Create("test-workspace", "test-codebase")
+	if err != nil {
+		t.Error(err)
+	}
+	_, _, err = ws.Edit(editPath)
+	if err != nil {
+		t.Error(err)
+	}
 }
