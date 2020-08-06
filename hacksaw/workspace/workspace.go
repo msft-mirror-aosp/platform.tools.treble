@@ -128,6 +128,10 @@ func (w Workspace) Edit(editPath string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	editPath, err = filepath.EvalSymlinks(editPath)
+	if err != nil {
+		return "", "", err
+	}
 	relProjectPath, err := w.getProjectFromPath(editPath)
 	if err != nil {
 		return "", "", err
