@@ -49,7 +49,7 @@ func TestServerBind(t *testing.T) {
 		t.Error(bindROReply.Err)
 	}
 	rwSourceDir := path.Join(mountTempDir, "path/to/readwrite/source")
-	if err = os.MkdirAll(rwSourceDir, os.ModePerm) ; err != nil {
+	if err = os.MkdirAll(rwSourceDir, os.ModePerm); err != nil {
 		t.Error(err)
 	}
 	rwDestDir := path.Join(mountTempDir, "path/to/hacksaw/readwrite/destination")
