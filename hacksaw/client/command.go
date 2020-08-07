@@ -106,7 +106,7 @@ func (c Command) removeCodebase(args []string) error {
 func (c Command) createWorkspace(args []string) error {
 	var codebaseName string
 	defaultCodebase := codebase.Default()
-	switch len(args){
+	switch len(args) {
 	case 4:
 		if defaultCodebase == "" {
 			return fmt.Errorf("Codebase name is required\n"+
