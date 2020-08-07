@@ -22,8 +22,8 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"strings"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/bind"
@@ -150,7 +150,7 @@ func (w Workspace) DetachGitWorktrees(workspaceName string, unbindList []string)
 		}
 	}
 	for project, isWorktree := range gitWorktrees {
-		if ! isWorktree {
+		if !isWorktree {
 			continue
 		}
 		codebaseProject := filepath.Join(codebaseDir, project)
@@ -184,7 +184,7 @@ func (w Workspace) DetachGitWorktrees(workspaceName string, unbindList []string)
 		}
 		cmd = exec.Command("git",
 			"-C", codebaseProject,
-			"branch", "--delete", "--force", workspaceName )
+			"branch", "--delete", "--force", workspaceName)
 		output, err = cmd.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("Command\n%s\nfailed with the following:\n%s\n%s",
