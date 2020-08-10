@@ -23,7 +23,6 @@ import (
 
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/bind"
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/config"
-	"android.googlesource.com/platform/tools/treble.git/hacksaw/file"
 )
 
 func ensureConfigFileExists(cfgPath string) error {
@@ -35,7 +34,7 @@ func ensureConfigFileExists(cfgPath string) error {
 	}
 
 	//init config file
-	if err = file.MkdirAll(path.Dir(cfgPath), os.ModePerm); err != nil {
+	if err = os.MkdirAll(path.Dir(cfgPath), os.ModePerm); err != nil {
 		return err
 	}
 	return ioutil.WriteFile(cfgPath, []byte("{}"), os.ModePerm)

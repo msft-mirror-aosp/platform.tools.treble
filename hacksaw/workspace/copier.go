@@ -21,8 +21,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"android.googlesource.com/platform/tools/treble.git/hacksaw/file"
 )
 
 type FileCopier struct {
@@ -162,7 +160,7 @@ func (f FileCopier) CopySymlink(sourcePath string, destPath string) error {
 	if err != nil {
 		return err
 	}
-	return file.Symlink(target, destPath)
+	return os.Symlink(target, destPath)
 }
 
 // CopyDirOnly copies a directory non-recursively
@@ -173,7 +171,7 @@ func (f FileCopier) CopyDirOnly(sourceInfo os.FileInfo, destPath string) error {
 		// Dir already exists, nothing to do
 		return err
 	} else if os.IsNotExist(err) {
-		return file.Mkdir(destPath, sourceInfo.Mode())
+		return os.Mkdir(destPath, sourceInfo.Mode())
 	}
 	return err
 }
@@ -187,7 +185,7 @@ func (f FileCopier) CopyFile(sourceInfo os.FileInfo, sourcePath, destPath string
 	}
 	defer sourceFile.Close()
 
-	destFile, err := file.Create(destPath)
+	destFile, err := os.Create(destPath)
 	if err != nil {
 		return err
 	}
