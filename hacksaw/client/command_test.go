@@ -52,6 +52,14 @@ func TestBadCommand(t *testing.T) {
 	}
 }
 
+func TestEmptyCodebaseCommand(t *testing.T) {
+	cmd := NewCommand(bind.NewFakePathBinder(), "")
+	args := []string{"hacksaw", "codebase"}
+	if err := cmd.Handle(args); err == nil {
+		t.Errorf("Allowed an empty codebase command")
+	}
+}
+
 func TestAddCodebase(t *testing.T) {
 	defer config.GetConfig().Reset()
 	codebaseDir, err := ioutil.TempDir("", "test")
@@ -135,6 +143,14 @@ func TestRemoveCodebase(t *testing.T) {
 	args = []string{"hacksaw", "codebase", "remove", "test-codebase"}
 	if err = cmd.Handle(args); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestEmptyWorkspaceCommand(t *testing.T) {
+	cmd := NewCommand(bind.NewFakePathBinder(), "")
+	args := []string{"hacksaw", "workspace"}
+	if err := cmd.Handle(args); err == nil {
+		t.Errorf("Allowed an empty workspace command")
 	}
 }
 
