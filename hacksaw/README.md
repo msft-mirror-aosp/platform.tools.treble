@@ -147,6 +147,11 @@ If you wish to uninstall the service then run:
 sudo ~/go/src/android.googlesource.com/platform/tools/treble.git/hacksaw/scripts/uninstall-service.sh
 sudo rm /usr/local/bin/hacksawd
 ```
+## How do I sync?
+
+You sync your codebases using `repo sync`. All updates will be propagated to workspaces.
+Except for projects that you are currently editing. Those will require you to `git pull`
+manually in the workspace project.
 
 ## How does hacksaw work?
 
