@@ -10,14 +10,7 @@ explicitly select to be edited. All other projects are read-only bind mounts. Th
 
 ## How much faster is it, really?
 
-Lets compare the performance of creating a hacksaw workspace versus a full repo sync using as a codebase the AOSP master branch as of 2020-8-4. The machine used was a c2-standard-60 Google Cloud Platform VM with 60 vCPUs and 240 GiB of RAM. Each action was performed at least 10 times then averaged out.
-
-* Create a new full repo workspace [using a fresh local mirror](https://source.android.com/setup/build/downloading#using-a-local-mirror)
-  + Time: 12 min 32 sec
-  + Disk usage: 88 GiB
-
-* Remove a full repo workspace with no build artifacts
-  + Time: 28 seconds
+Lets look at some performance numbers for creating a hacksaw workspace using as a codebase the AOSP master branch as of 2020-8-4. The machine used was a c2-standard-60 Google Cloud Platform VM with 60 vCPUs and 240 GiB of RAM. Each action was performed at least 10 times then averaged out.
 
 * Create a new Hacksaw workspace
   + Time: 0.4 sec
@@ -34,8 +27,17 @@ Lets compare the performance of creating a hacksaw workspace versus a full repo 
   + Time: 7.5 sec
   + Disk usage: 1.3 GiB
 
-As you can see, the time it takes to set up a new workspace is proportional to
-the git projects checked out for editing.
+As you can see, the time it takes to set up a new hacksaw workspace is proportional to
+the git projects checked out for editing. Contrast that with how long it takes
+to create a workspace using a full repo sync with a local
+mirror.
+
+* Create a new full repo workspace [using a fresh local mirror](https://source.android.com/setup/build/downloading#using-a-local-mirror)
+  + Time: 12 min 32 sec
+  + Disk usage: 88 GiB
+
+* Remove a full repo workspace with no build artifacts
+  + Time: 28 seconds
 
 ## Can you give me an example?
 
