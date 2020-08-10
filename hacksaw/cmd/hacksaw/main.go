@@ -17,48 +17,120 @@ package main
 
 import (
 	"fmt"
+	"net"
+	"net/http"
+	"net/rpc"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strconv"
+	"syscall"
 
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/bind"
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/client"
 )
 
+const hacksawdSocketPath = "/var/run/hacksaw.sock"
+const tmpSocketPath = "/tmp/hacksaw.sock"
+
 func getPathBinder() bind.PathBinder {
-	var pathBinder bind.PathBinder
-	uid := os.Geteuid()
-	if uid == 0 {
-		pathBinder = bind.NewLocalPathBinder()
-	} else {
-		pathBinder = bind.NewRemoteBindClient("/var/run/hacksaw.sock")
+	if os.Geteuid() == 0 {
+		// Called by root without SUDO_USER
+		// Most likely in a mount namepace
+		return bind.NewLocalPathBinder()
 	}
-	return pathBinder
+	_, err := os.Stat(tmpSocketPath)
+	if err == nil {
+		return bind.NewRemoteBindClient(tmpSocketPath)
+	} else {
+		return bind.NewRemoteBindClient(hacksawdSocketPath)
+	}
 }
 
 func getWorkspaceTopDir() (string, error) {
-	var home string
-	var err error
-	uid := os.Geteuid()
-	sudoUser := os.Getenv("SUDO_USER")
-	if uid == 0 && sudoUser != "" {
-		usr, err := user.Lookup(sudoUser)
-		if err != nil {
-			return "", err
-		}
-		home = usr.HomeDir
-	} else {
-		home, err = os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
 	}
 	// The hacksaw mount daemon requires all mounts
 	// to be contained in a directory named "hacksaw"
 	return filepath.EvalSymlinks(filepath.Join(home, "hacksaw"))
 }
 
+func dropPrivileges(sudoUser string, socketPath string) error {
+	usr, err := user.Lookup(sudoUser)
+	if err != nil {
+		return err
+	}
+	sudoUid, err := strconv.ParseUint(usr.Uid, 10, 32)
+	if err != nil {
+		return err
+	}
+	sudoGid, err := strconv.ParseUint(usr.Gid, 10, 32)
+	if err != nil {
+		return err
+	}
+	if err = os.Chown(socketPath, int(sudoUid), int(sudoGid)); err != nil {
+		return err
+	}
+	cmd := exec.Command(os.Args[0], os.Args[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), "HOME="+usr.HomeDir)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{
+			Uid: uint32(sudoUid),
+			Gid: uint32(sudoGid),
+		},
+		Setsid: true,
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	_, err = cmd.Process.Wait()
+	if err != nil {
+		return err
+	}
+	if err = cmd.Process.Release(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func createPathBinderListener(socketPath string) (net.Listener, error) {
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		return nil, err
+	}
+
+	binder := bind.NewLocalPathBinder()
+	server := bind.NewServer(binder)
+	if err = rpc.Register(server); err != nil {
+		return nil, err
+	}
+	rpc.HandleHTTP()
+	return listener, nil
+}
+
+func handleSudoUser(sudoUser string) error {
+	if err := os.RemoveAll(tmpSocketPath); err != nil {
+		return err
+	}
+	listener, err := createPathBinderListener(tmpSocketPath)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpSocketPath)
+	go http.Serve(listener, nil)
+	return dropPrivileges(sudoUser, tmpSocketPath)
+}
+
 func run() error {
+	sudoUser := os.Getenv("SUDO_USER")
+	if os.Geteuid() == 0 && sudoUser != "" {
+		return handleSudoUser(sudoUser)
+	}
 	workspaceTopDir, err := getWorkspaceTopDir()
 	if err != nil {
 		return err
