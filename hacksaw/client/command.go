@@ -182,6 +182,9 @@ func (c Command) Handle(args []string) error {
 
 	switch command {
 	case "codebase", "cb":
+		if len(args) < 3 {
+			return fmt.Errorf("Not enough arguments for codebase command")
+		}
 		subcommand := args[2]
 		switch subcommand {
 		case "add":
@@ -197,6 +200,9 @@ func (c Command) Handle(args []string) error {
 			return fmt.Errorf("Command \"%s %s\" not found", command, subcommand)
 		}
 	case "workspace", "ws":
+		if len(args) < 3 {
+			return fmt.Errorf("Not enough arguments for workspace command")
+		}
 		subcommand := args[2]
 		switch subcommand {
 		case "new":
