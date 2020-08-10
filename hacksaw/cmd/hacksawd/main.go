@@ -16,12 +16,10 @@
 package main
 
 import (
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
-	"path"
 	"strconv"
 
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/bind"
@@ -36,15 +34,8 @@ func main() {
 		panic("Unexpected number of socket fds")
 	}
 
-	// systemd will always provide the socket in this file descriptor
-	//TODO: this directory is sometimes leaked
-	dir, err := ioutil.TempDir("", "hacksawd")
-	if err != nil {
-		panic(err)
-	}
-	defer os.RemoveAll(dir)
 	const socketFD = 3
-	socketFile := os.NewFile(socketFD, path.Join(dir, "hacksawd.sock"))
+	socketFile := os.NewFile(socketFD, "hacksawd.sock")
 
 	listener, err := net.FileListener(socketFile)
 	if err != nil {

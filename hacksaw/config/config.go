@@ -21,8 +21,6 @@ import (
 	"io/ioutil"
 	"os"
 	"sync"
-
-	"android.googlesource.com/platform/tools/treble.git/hacksaw/file"
 )
 
 type Config struct {
@@ -65,7 +63,7 @@ func (c *Config) ReadConfigFromFile(filePath string) error {
 }
 
 func (c Config) WriteConfigToFile(filePath string) error {
-	cfgFile, err := file.Create(filePath)
+	cfgFile, err := os.Create(filePath)
 	if err != nil {
 		return err
 	}

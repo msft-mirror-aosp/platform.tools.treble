@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/bind"
-	"android.googlesource.com/platform/tools/treble.git/hacksaw/file"
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/git"
 )
 
@@ -58,7 +57,7 @@ func (m Composer) Compose(codebasePath string, workspacePath string) ([]string, 
 		}
 		source := filepath.Join(codebasePath, project)
 		destination := filepath.Join(workspacePath, project)
-		if err = file.MkdirAll(destination, os.ModePerm); err != nil {
+		if err = os.MkdirAll(destination, os.ModePerm); err != nil {
 			fmt.Print("\n")
 			return bindList, err
 		}
