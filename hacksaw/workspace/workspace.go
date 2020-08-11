@@ -20,16 +20,12 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/bind"
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/codebase"
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/config"
-	"android.googlesource.com/platform/tools/treble.git/hacksaw/file"
 	"android.googlesource.com/platform/tools/treble.git/hacksaw/git"
 )
 
@@ -57,7 +53,7 @@ func (w Workspace) Create(workspaceName string, codebaseName string) (string, er
 	if err != nil {
 		return "", err
 	}
-	if err = file.MkdirAll(workspaceDir, os.ModePerm); err != nil {
+	if err = os.MkdirAll(workspaceDir, os.ModePerm); err != nil {
 		return "", err
 	}
 	codebaseDir, err := codebase.GetDir(codebaseName)
@@ -264,23 +260,6 @@ func (w Workspace) Edit(editPath string) (string, string, error) {
 		"worktree", "add",
 		"-b", branchName,
 		wsProjectPath)
-	sudoUser := os.Getenv("SUDO_USER")
-	if sudoUser != "" {
-		usr, err := user.Lookup(sudoUser)
-		if err != nil {
-			return "", "", err
-		}
-		sudoUid, err := strconv.ParseUint(usr.Uid, 10, 32)
-		if err != nil {
-			return "", "", err
-		}
-		sudoGid, err := strconv.ParseUint(usr.Gid, 10, 32)
-		if err != nil {
-			return "", "", err
-		}
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-		cmd.SysProcAttr.Credential = &syscall.Credential{Uid: uint32(sudoUid), Gid: uint32(sudoGid)}
-	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", "", fmt.Errorf("Command\n%s\nfailed with the following:\n%s\n%s",
