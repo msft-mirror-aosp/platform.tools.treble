@@ -55,7 +55,20 @@ func getWorkspaceTopDir() (string, error) {
 	}
 	// The hacksaw mount daemon requires all mounts
 	// to be contained in a directory named "hacksaw"
-	return filepath.EvalSymlinks(filepath.Join(home, "hacksaw"))
+	topDir := filepath.Join(home, "hacksaw")
+	_, err = os.Stat(topDir)
+	if err == nil {
+		// expected case
+	} else if os.IsNotExist(err) {
+		return topDir, nil
+	} else {
+		return "", err
+	}
+	topDir, err = filepath.EvalSymlinks(topDir)
+	if err != nil {
+		return "", err
+	}
+	return topDir, nil
 }
 
 func dropPrivileges(sudoUser string, socketPath string) error {
