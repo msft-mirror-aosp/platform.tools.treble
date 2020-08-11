@@ -139,7 +139,7 @@ func handleSudoUser(sudoUser string) error {
 	return dropPrivileges(sudoUser, tmpSocketPath)
 }
 
-func run() error {
+func run(args []string) error {
 	sudoUser := os.Getenv("SUDO_USER")
 	if os.Geteuid() == 0 && sudoUser != "" {
 		return handleSudoUser(sudoUser)
@@ -149,11 +149,11 @@ func run() error {
 		return err
 	}
 	pathBinder := getPathBinder()
-	return client.HandleCommand(workspaceTopDir, pathBinder, os.Args)
+	return client.HandleCommand(workspaceTopDir, pathBinder, args)
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args); err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)
 	}
