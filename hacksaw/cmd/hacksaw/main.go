@@ -55,7 +55,20 @@ func getWorkspaceTopDir() (string, error) {
 	}
 	// The hacksaw mount daemon requires all mounts
 	// to be contained in a directory named "hacksaw"
-	return filepath.EvalSymlinks(filepath.Join(home, "hacksaw"))
+	topDir := filepath.Join(home, "hacksaw")
+	_, err = os.Stat(topDir)
+	if err == nil {
+		// expected case
+	} else if os.IsNotExist(err) {
+		return topDir, nil
+	} else {
+		return "", err
+	}
+	topDir, err = filepath.EvalSymlinks(topDir)
+	if err != nil {
+		return "", err
+	}
+	return topDir, nil
 }
 
 func dropPrivileges(sudoUser string, socketPath string) error {
@@ -126,7 +139,7 @@ func handleSudoUser(sudoUser string) error {
 	return dropPrivileges(sudoUser, tmpSocketPath)
 }
 
-func run() error {
+func run(args []string) error {
 	sudoUser := os.Getenv("SUDO_USER")
 	if os.Geteuid() == 0 && sudoUser != "" {
 		return handleSudoUser(sudoUser)
@@ -136,11 +149,11 @@ func run() error {
 		return err
 	}
 	pathBinder := getPathBinder()
-	return client.HandleCommand(workspaceTopDir, pathBinder, os.Args)
+	return client.HandleCommand(workspaceTopDir, pathBinder, args)
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args); err != nil {
 		fmt.Println("Error:", err)
 		os.Exit(1)
 	}

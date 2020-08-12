@@ -175,3 +175,7 @@ its read-only bind mount gets replaced by a writable Git worktree.
 * Syncing a codebase does update the existing projects in all attached
   workspaces but it does not remove or add new projects. Perhaps there
   should be a new "workspace sync" command for that?
+
+## Where can I get more help?
+
+You can ask hacksaw-users@googlegroups.com by [joining the group](https://groups.google.com/forum/#!forum/hacksaw-users).
