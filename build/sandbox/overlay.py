@@ -79,7 +79,7 @@ class BindOverlay(object):
     return conflict_path
 
   def _AddOverlay(self, source_dir, overlay_dir, intermediate_work_dir, skip_subdirs,
-                  allowed_projects, destination_dir, allowed_read_write):
+                  allowed_projects, destination_dir, allowed_read_write, contains_read_write):
     """Adds a single overlay directory.
 
     Args:
@@ -94,6 +94,8 @@ class BindOverlay(object):
         applied to it.
       allowed_read_write: A function returns true if the path input should
         be allowed read/write access.
+      contains_read_write: A function returns true if the path input contains
+        a sub-path that should be allowed read/write access.
     """
     # Traverse the overlay directory twice
     # The first pass only process git projects
@@ -146,37 +148,52 @@ class BindOverlay(object):
       current_dir_destination = os.path.normpath(
         os.path.join(destination_dir, current_dir_relative))
 
+      bindCurrentDir = True
+
+      # Directories with git projects can't be bind mounted
+      # because git projects are individually mounted
       if current_dir_origin in dirs_with_git_projects:
-        # Symbolic links to subdirectories
-        # have to be copied to the intermediate work directory.
-        # We can't bind mount them because bind mounts deference
-        # symbolic links, and the build system filters out any
-        # directory symbolic links.
-        for subdir in subdirs:
-          subdir_origin = os.path.join(current_dir_origin, subdir)
-          if os.path.islink(subdir_origin):
-            if subdir_origin not in skip_subdirs:
-              subdir_destination = os.path.join(intermediate_work_dir,
-                  current_dir_relative, subdir)
-              self._CopyFile(subdir_origin, subdir_destination)
+        bindCurrentDir = False
 
-        # bind each file individually then keep travesting
-        for file in files:
-          file_origin = os.path.join(current_dir_origin, file)
-          file_destination = os.path.join(current_dir_destination, file)
-          if allowed_read_write(file_origin):
-            self._AddBindMount(file_origin, file_destination, False)
-          else:
-            self._AddBindMount(file_origin, file_destination, True)
+      # A directory that contains read-write paths should only
+      # ever be bind mounted if the directory itself is read-write
+      if contains_read_write(current_dir_origin) and not allowed_read_write(current_dir_origin):
+        bindCurrentDir = False
 
-      else:
-        # The current dir does not have any git projects to it can be bind
-        # mounted wholesale
+      if bindCurrentDir:
+        # The current dir can be bind mounted wholesale
         del subdirs[:]
         if allowed_read_write(current_dir_origin):
           self._AddBindMount(current_dir_origin, current_dir_destination, False)
         else:
           self._AddBindMount(current_dir_origin, current_dir_destination, True)
+        continue
+
+      # If we've made it this far then we're going to process
+      # each file and subdir individually
+
+      for subdir in subdirs:
+        subdir_origin = os.path.join(current_dir_origin, subdir)
+        # Symbolic links to subdirectories
+        # have to be copied to the intermediate work directory.
+        # We can't bind mount them because bind mounts dereference
+        # symbolic links, and the build system filters out any
+        # directory symbolic links.
+        if os.path.islink(subdir_origin):
+          if subdir_origin not in skip_subdirs:
+            subdir_destination = os.path.join(intermediate_work_dir,
+                current_dir_relative, subdir)
+            self._CopyFile(subdir_origin, subdir_destination)
+
+      # bind each file individually then keep traversing
+      for file in files:
+        file_origin = os.path.join(current_dir_origin, file)
+        file_destination = os.path.join(current_dir_destination, file)
+        if allowed_read_write(file_origin):
+          self._AddBindMount(file_origin, file_destination, False)
+        else:
+          self._AddBindMount(file_origin, file_destination, True)
+
 
   def _AddArtifactDirectories(self, source_dir, destination_dir, skip_subdirs):
     """Add directories that were not synced as workspace source.
@@ -215,7 +232,8 @@ class BindOverlay(object):
     return skip_subdirs
 
   def _AddOverlays(self, source_dir, overlay_dirs, destination_dir,
-                   skip_subdirs, allowed_projects, allowed_read_write):
+                   skip_subdirs, allowed_projects, allowed_read_write,
+                   contains_read_write):
     """Add the selected overlay directories.
 
     Args:
@@ -229,6 +247,8 @@ class BindOverlay(object):
         is excluded from overlaying.
       allowed_read_write: A function returns true if the path input should
         be allowed read/write access.
+      contains_read_write: A function returns true if the path input contains
+        a sub-path that should be allowed read/write access.
     """
 
     # Create empty intermediate workdir
@@ -253,7 +273,7 @@ class BindOverlay(object):
     for overlay_dir in overlay_dirs:
       self._AddOverlay(source_dir, overlay_dir, intermediate_work_dir,
                        skip_subdirs, allowed_projects,
-                       destination_dir, allowed_read_write)
+                       destination_dir, allowed_read_write, contains_read_write)
 
 
   def _AddBindMount(self, source_dir, destination_dir, readonly=False):
@@ -327,6 +347,33 @@ class BindOverlay(object):
 
     return AllowReadWrite
 
+  def _GetContainsReadWriteFunction(self, build_config, source_dir):
+    """Returns a function that tells you if a directory contains a read-write dir
+
+    Args:
+      build_config: A config.BuildConfig instance of the build target to be
+                    prepared.
+      source_dir: A string with the path to the Android platform source.
+
+    Returns:
+      A function that takes a string path as an input and returns
+      True if the path contains a read-write path
+    """
+
+    # Get all dirs with allowed read-write
+    # and all their ancestor directories
+    contains_rw = set()
+    for path in build_config.allow_readwrite:
+      while path not in ["", "/"]:
+      # The read/write allowlist provides paths relative to the source dir. It
+      # needs to be updated with absolute paths to make lookup possible.
+        contains_rw.add(os.path.join(source_dir, path))
+        path = os.path.dirname(path)
+
+    def ContainsReadWrite(path):
+      return build_config.allow_readwrite_all or path in contains_rw
+
+    return ContainsReadWrite
 
   def _GetAllowedProjects(self, build_config):
     """Returns a set of paths that are allowed to contain .git projects.
@@ -385,6 +432,7 @@ class BindOverlay(object):
     build_config = cfg.get_build_config(build_target)
 
     allowed_read_write = self._GetReadWriteFunction(build_config, source_dir)
+    contains_read_write = self._GetContainsReadWriteFunction(build_config, source_dir)
     allowed_projects = self._GetAllowedProjects(build_config)
 
     overlay_dirs = []
@@ -394,7 +442,7 @@ class BindOverlay(object):
 
     self._AddOverlays(
         source_dir, overlay_dirs, destination_dir,
-        skip_subdirs, allowed_projects, allowed_read_write)
+        skip_subdirs, allowed_projects, allowed_read_write, contains_read_write)
 
     # If specified for this target, create a custom filesystem view
     for path_relative_from, path_relative_to in build_config.views:
