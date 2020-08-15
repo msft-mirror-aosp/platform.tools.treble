@@ -226,7 +226,7 @@ func (w Workspace) Edit(editPath string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	relProjectPath, err := w.getProjectFromPath(editPath)
+	relProjectPath, err := w.getReadOnlyProjectFromPath(editPath)
 	if err != nil {
 		return "", "", err
 	}
@@ -268,7 +268,7 @@ func (w Workspace) Edit(editPath string) (string, string, error) {
 	return branchName, wsProjectPath, err
 }
 
-func (w Workspace) getProjectFromPath(inPath string) (string, error) {
+func (w Workspace) getReadOnlyProjectFromPath(inPath string) (string, error) {
 	worspaceName, err := w.getWorkspaceFromPath(inPath)
 	if err != nil {
 		return "", err
@@ -291,7 +291,7 @@ func (w Workspace) getProjectFromPath(inPath string) (string, error) {
 		}
 		return relProjectPath, nil
 	}
-	return "", fmt.Errorf("Path %s is not contained in a workspace project", inPath)
+	return "", fmt.Errorf("Path %s is already editable", inPath)
 }
 
 func (w Workspace) getWorkspaceFromPath(inPath string) (string, error) {
