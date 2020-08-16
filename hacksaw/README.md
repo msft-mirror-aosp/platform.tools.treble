@@ -94,8 +94,7 @@ Building hacksaw requires [golang to be installed](https://golang.org/doc/instal
 To install the hacksaw client run the following:
 
 ```
-go get android.googlesource.com/platform/tools/treble.git/hacksaw
-go install android.googlesource.com/platform/tools/treble.git/hacksaw/cmd/hacksaw
+go get android.googlesource.com/platform/tools/treble.git/hacksaw/cmd/hacksaw
 ```
 
 This will install hacksaw to ~/go/bin/hacksaw. You may choose to copy that
@@ -132,7 +131,7 @@ Hacksawd is a privileged system daemon whose only job is to manage bind mounts.
 The provided install script will install to your system
 
 ```
-go install android.googlesource.com/platform/tools/treble.git/hacksaw/cmd/hacksawd
+go get android.googlesource.com/platform/tools/treble.git/hacksaw/cmd/hacksawd
 sudo cp ~/go/bin/hacksawd /usr/local/bin
 sudo chmod 755 /usr/local/bin/hacksawd
 sudo ~/go/src/android.googlesource.com/platform/tools/treble.git/hacksaw/scripts/install-service.sh
