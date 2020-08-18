@@ -6,8 +6,8 @@ SCRIPT_DIR=$(dirname $(readlink --canonicalize $0))
 
 # This script must be run with sudo
 
-systemctl stop hacksaw.service
 systemctl stop hacksaw.socket
+systemctl stop hacksaw.service
 systemctl disable hacksaw.service
 systemctl disable hacksaw.socket
 rm /lib/systemd/system/hacksaw.service
