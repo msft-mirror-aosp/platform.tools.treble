@@ -156,10 +156,17 @@ func (f FileCopier) CopyNode(sourceInfo os.FileInfo, codebaseDir, sourcePath, wo
 }
 
 func (f FileCopier) CopySymlink(sourcePath string, destPath string) error {
+	// Skip symlink if it already exists at the destination
+	_, err := os.Lstat(destPath)
+	if err == nil {
+		return nil
+	}
+
 	target, err := os.Readlink(sourcePath)
 	if err != nil {
 		return err
 	}
+
 	return os.Symlink(target, destPath)
 }
 
@@ -179,6 +186,12 @@ func (f FileCopier) CopyDirOnly(sourceInfo os.FileInfo, destPath string) error {
 // CopyFile copies a single file
 // sourcePath must be contained in codebaseDir
 func (f FileCopier) CopyFile(sourceInfo os.FileInfo, sourcePath, destPath string) error {
+	//Skip file if it already exists at the destination
+	_, err := os.Lstat(destPath)
+	if err == nil {
+		return nil
+	}
+
 	sourceFile, err := os.Open(sourcePath)
 	if err != nil {
 		return err
