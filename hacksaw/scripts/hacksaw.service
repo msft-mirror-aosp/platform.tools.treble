@@ -1,14 +1,11 @@
 [Unit]
 Description=Hacksaw service
 ConditionPathExists=/usr/local/bin/hacksawd
-Requires=network.target
-After=multi-user.target
 
 [Service]
-# Runs a root by default
+# Runs as root by default
 Type=simple
 ExecStart=/usr/local/bin/hacksawd
 
 [Install]
-# This defines the service run level
-WantedBy=multi-user.target
+RequiredBy=hacksaw.socket
