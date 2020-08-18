@@ -344,3 +344,114 @@ func TestEdit(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+const projectList = `read-only-project
+editable-project`
+
+func TestRecreate(t *testing.T) {
+	defer config.GetConfig().Reset()
+	codebaseDir, err := ioutil.TempDir("", "codebase")
+	if err != nil {
+		t.Error(err)
+	}
+	defer os.RemoveAll(codebaseDir)
+	roProjectDir := path.Join(codebaseDir, "read-only-project")
+	if err = os.MkdirAll(roProjectDir, os.ModePerm); err != nil {
+		t.Error(err)
+	}
+	cmd := exec.Command("git", "-C", roProjectDir, "init")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("Command\n%s\nfailed with the following:\n%s\n%s",
+			cmd.String(), err.Error(), output)
+	}
+	cmd = exec.Command("git", "-C", roProjectDir, "commit", `--message="Initial commit"`, "--allow-empty")
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("Command\n%s\nfailed with the following:\n%s\n%s",
+			cmd.String(), err.Error(), output)
+	}
+	linkPath := path.Join(codebaseDir, "symlink")
+	if err = os.Symlink(roProjectDir, linkPath); err != nil {
+		t.Error(err)
+	}
+	rwProjectDir := path.Join(codebaseDir, "editable-project")
+	if err = os.MkdirAll(rwProjectDir, os.ModePerm); err != nil {
+		t.Error(err)
+	}
+	cmd = exec.Command("git", "-C", rwProjectDir, "init")
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("Command\n%s\nfailed with the following:\n%s\n%s",
+			cmd.String(), err.Error(), output)
+	}
+	cmd = exec.Command("git", "-C", rwProjectDir, "commit", `--message="Initial commit"`, "--allow-empty")
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("Command\n%s\nfailed with the following:\n%s\n%s",
+			cmd.String(), err.Error(), output)
+	}
+	repoDir := path.Join(codebaseDir, ".repo")
+	if err = os.Mkdir(repoDir, os.ModePerm); err != nil {
+		t.Error(err)
+	}
+	listContents := []byte(projectList)
+	listPath := path.Join(repoDir, "project.list")
+	if err = ioutil.WriteFile(listPath, listContents, os.ModePerm); err != nil {
+		t.Error(err)
+	}
+	_, err = codebase.Add("test-codebase", codebaseDir)
+	if err != nil {
+		t.Error(err)
+	}
+	wsTempDir, err := ioutil.TempDir("", "workspace")
+	if err != nil {
+		t.Error(err)
+	}
+	defer os.RemoveAll(wsTempDir)
+	wsTopDir := path.Join(wsTempDir, "hacksaw")
+	if err = os.Mkdir(wsTopDir, os.ModePerm); err != nil {
+		t.Error(err)
+	}
+	pathBinder := bind.NewFakePathBinder()
+	ws := New(pathBinder, wsTopDir)
+	if _, err = ws.Create("test-workspace", "test-codebase"); err != nil {
+		t.Error(err)
+	}
+	workspaceDir, err := ws.GetDir("test-workspace")
+	if err != nil {
+		t.Error(err)
+	}
+	editPath := path.Join(workspaceDir, "editable-project")
+	_, _, err = ws.Edit(editPath)
+	if err != nil {
+		t.Error(err)
+	}
+	emptyFilePath := path.Join(editPath, "empty-edit")
+	emptyFile, err := os.Create(emptyFilePath)
+	if err != nil {
+		t.Error(err)
+	}
+	emptyFile.Close()
+	if _, err = ws.Recreate("test-workspace"); err != nil {
+		t.Error(err)
+	}
+	_, err = os.Stat(emptyFilePath)
+	if err != nil {
+		t.Error(err)
+	}
+	wsRoProjectDir := path.Join(workspaceDir, "read-only-project")
+	isRoPathBound := false
+	pathList, err := pathBinder.List()
+	if err != nil {
+		t.Error(err)
+	}
+	for _, path := range pathList {
+		if path == wsRoProjectDir {
+			isRoPathBound = true
+		}
+	}
+	if !isRoPathBound {
+		t.Error("Read only project was not mounted to the workspace")
+	}
+}
