@@ -67,6 +67,27 @@ func (w Workspace) Create(workspaceName string, codebaseName string) (string, er
 	return workspaceDir, nil
 }
 
+// Recreate workspace
+func (w Workspace) Recreate(workspaceName string) (string, error) {
+	cfg := config.GetConfig()
+	codebaseName, ok := cfg.Workspaces[workspaceName]
+	if !ok {
+		return "", fmt.Errorf("Workspace %s does not exist", workspaceName)
+	}
+	workspaceDir, err := w.GetDir(workspaceName)
+	if err != nil {
+		return "", err
+	}
+	codebaseDir, err := codebase.GetDir(codebaseName)
+	if err != nil {
+		return "", err
+	}
+	if _, err = w.composer.Compose(codebaseDir, workspaceDir); err != nil {
+		return "", err
+	}
+	return workspaceDir, nil
+}
+
 // GetDir retrieves the directory of a specific workspace
 func (w Workspace) GetDir(workspaceName string) (string, error) {
 	cfg := config.GetConfig()

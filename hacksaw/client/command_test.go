@@ -195,6 +195,55 @@ func TestCreateWorkspace(t *testing.T) {
 	}
 }
 
+func TestRecreateWorkspace(t *testing.T) {
+	defer config.GetConfig().Reset()
+	codebaseDir, err := ioutil.TempDir("", "test")
+	if err != nil {
+		t.Error(err)
+	}
+	defer os.RemoveAll(codebaseDir)
+	gitDir := path.Join(codebaseDir, "project", ".git")
+	if err = os.MkdirAll(gitDir, os.ModePerm); err != nil {
+		t.Error(err)
+	}
+	repoDir := path.Join(codebaseDir, ".repo")
+	if err = os.Mkdir(repoDir, os.ModePerm); err != nil {
+		t.Error(err)
+	}
+	listContents := []byte("project")
+	listPath := path.Join(repoDir, "project.list")
+	if err = ioutil.WriteFile(listPath, listContents, os.ModePerm); err != nil {
+		t.Error(err)
+	}
+	_, err = codebase.Add("test-codebase", codebaseDir)
+	if err != nil {
+		t.Error(err)
+	}
+
+	wsTempDir, err := ioutil.TempDir("", "workspace")
+	if err != nil {
+		t.Error(err)
+	}
+	defer os.RemoveAll(wsTempDir)
+	wsTopDir := path.Join(wsTempDir, "hacksaw")
+	if err = os.Mkdir(wsTopDir, os.ModePerm); err != nil {
+		t.Error(err)
+	}
+	cmd := NewCommand(bind.NewFakePathBinder(), wsTopDir)
+	args := []string{"hacksaw", "workspace", "new", "test-workspace", "test-codebase"}
+	if err = cmd.Handle(args); err != nil {
+		t.Error(err)
+	}
+	args = []string{"hacksaw", "workspace", "recreate", "test-workspace"}
+	if err = cmd.Handle(args); err != nil {
+		t.Error(err)
+	}
+	args = []string{"hacksaw", "workspace", "recreate", "does-not-exist"}
+	if err = cmd.Handle(args); err == nil {
+		t.Error("Allowed to recreate an unexistant workspace")
+	}
+}
+
 func TestListWorkspace(t *testing.T) {
 	defer config.GetConfig().Reset()
 	codebaseDir, err := ioutil.TempDir("", "test")
