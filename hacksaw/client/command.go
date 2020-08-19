@@ -30,7 +30,12 @@ Commands:
 	codebase list: List all codebases that hacksaw knows about.
 	codebase default <name>: Change the default codebase.
 	codebase remove <name>: Remove a codebase from hacksaw's list.
-	workspace new <workspace_name> <codebase_name>: Create a new workspace from a codebase.
+	workspace new <workspace_name> <codebase_name>: Create a new workspace
+	  from a codebase. The codebase is optional if a default codebase
+	  has already been set.
+	workspace recreate <name>: Recreate an existing workspace.
+	  This will recreate any read-only bind mounts which may be necessary
+	  when a machine is rebooted.
 	workspace list: List all known workspaces.
 	workspace remove <name>: Remove a workspace.
 	edit <path>: Make a workspace path editable by checking out the parent git project.`
@@ -132,6 +137,22 @@ func (c Command) createWorkspace(args []string) error {
 	return nil
 }
 
+func (c Command) recreateWorkspace(args []string) error {
+	if len(args) < 4 {
+		return fmt.Errorf("Workspace name is required\n"+
+			"Usage: %s %s %s <name>",
+			args[0], args[1], args[2])
+	}
+
+	workspaceName := args[3]
+	dir, err := c.workspace.Recreate(workspaceName)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Recreated", workspaceName, "at", dir)
+	return nil
+}
+
 func (c Command) listWorkspaces() {
 	list := c.workspace.List()
 	fmt.Println("Workspaces:")
@@ -207,6 +228,8 @@ func (c Command) Handle(args []string) error {
 		switch subcommand {
 		case "new":
 			return c.createWorkspace(args)
+		case "recreate":
+			return c.recreateWorkspace(args)
 		case "remove", "rm":
 			return c.removeWorkspace(args)
 		case "list", "ls":

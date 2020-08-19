@@ -16,6 +16,7 @@ package workspace
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -31,6 +32,19 @@ type Composer struct {
 
 func NewComposer(bm bind.PathBinder) Composer {
 	return Composer{bm}
+}
+
+func isDirEmpty(name string) (bool, error) {
+	dir, err := os.Open(name)
+	if err != nil {
+		return false, err
+	}
+	defer dir.Close()
+	_, err = dir.Readdirnames(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err
 }
 
 //Compose a workspace from a codebase
@@ -60,6 +74,17 @@ func (m Composer) Compose(codebasePath string, workspacePath string) ([]string, 
 		if err = os.MkdirAll(destination, os.ModePerm); err != nil {
 			fmt.Print("\n")
 			return bindList, err
+		}
+		isEmpty, err := isDirEmpty(destination)
+		if err != nil {
+			return bindList, err
+		}
+		if !isEmpty {
+			// If the destination dir already existed and
+			// was not empty then assume we are recreating
+			// a workspace and the current path already
+			// existed in the workspace
+			continue
 		}
 		if err = m.pathBinder.BindReadOnly(source, destination); err != nil {
 			fmt.Print("\n")
