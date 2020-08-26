@@ -38,6 +38,8 @@ python_test_host {
         "sandbox/nsjail_test.py",
         "sandbox/overlay.py",
         "sandbox/overlay_test.py",
+        "sandbox/rbe.py",
+        "sandbox/rbe_test.py",
         "test.py",
         "sample_test.py",
     ],

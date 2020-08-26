@@ -36,6 +36,13 @@ class BindOverlayTest(unittest.TestCase):
     os.mkdir(os.path.join(self.source_dir, 'base_dir'))
     os.mkdir(os.path.join(self.source_dir, 'base_dir', 'base_project'))
     os.mkdir(os.path.join(self.source_dir, 'base_dir', 'base_project', '.git'))
+    os.mkdir(os.path.join(self.source_dir, 'no_git_dir'))
+    os.mkdir(os.path.join(self.source_dir, 'no_git_dir', 'no_git_subdir1'))
+    open(os.path.join(self.source_dir,
+                      'no_git_dir', 'no_git_subdir1', 'no_git_file1'), 'a').close()
+    os.mkdir(os.path.join(self.source_dir, 'no_git_dir', 'no_git_subdir2'))
+    open(os.path.join(self.source_dir,
+                      'no_git_dir', 'no_git_subdir2', 'no_git_file2'), 'a').close()
     os.mkdir(os.path.join(self.source_dir, 'overlays'))
     os.mkdir(os.path.join(self.source_dir,
                           'overlays', 'unittest1'))
@@ -166,7 +173,7 @@ class BindOverlayTest(unittest.TestCase):
       'upper_subdir/lower_subdir/from_unittest2')
     self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
 
-  def testMultipleOverlaysWithWhitelist(self):
+  def testMultipleOverlaysWithAllowlist(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
       test_config.write(
         '<?xml version="1.0" encoding="UTF-8" ?>'
@@ -198,6 +205,42 @@ class BindOverlayTest(unittest.TestCase):
       'overlays/unittest2/upper_subdir/lower_subdir/from_unittest2')
     bind_destination = os.path.join(self.source_dir,
       'upper_subdir/lower_subdir/from_unittest2')
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+
+  def testAllowReadWriteNoGitDir(self):
+    with tempfile.NamedTemporaryFile('w+t') as test_config:
+      test_config.write(
+        '<?xml version="1.0" encoding="UTF-8" ?>'
+        '<config>'
+        '  <target name="unittest">'
+        '    <overlay name="unittest1"/>'
+        '    <overlay name="unittest2"/>'
+        '    <allow_readwrite path="no_git_dir/no_git_subdir1"/>'
+        '    <build_config>'
+        '      <goal name="goal_name"/>'
+        '    </build_config>'
+        '  </target>'
+        '</config>'
+        )
+      test_config.flush()
+      o = overlay.BindOverlay(
+          cfg=config.factory(test_config.name),
+          build_target='unittest',
+          source_dir=self.source_dir)
+    self.assertIsNotNone(o)
+    bind_mounts = o.GetBindMounts()
+    bind_source = os.path.join(self.source_dir,
+      'no_git_dir/no_git_subdir1')
+    bind_destination = os.path.join(self.source_dir, 'no_git_dir/no_git_subdir1')
+    self.assertIn(bind_destination, bind_mounts)
+    self.assertEqual(
+        bind_mounts[bind_destination],
+        overlay.BindMount(source_dir=bind_source, readonly=False))
+    bind_source = os.path.join(self.source_dir,
+      'no_git_dir/no_git_subdir2')
+    bind_destination = os.path.join(self.source_dir,
+      'no_git_dir/no_git_subdir2')
+    self.assertIn(bind_destination, bind_mounts)
     self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
 
   def testValidOverlaidDir(self):
