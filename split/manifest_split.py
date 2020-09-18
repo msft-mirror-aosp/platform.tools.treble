@@ -411,7 +411,7 @@ class DebugInfo():
 def create_split_manifest(targets, manifest_file, split_manifest_file,
                           config_files, repo_list_file, ninja_build_file,
                           ninja_binary, module_info_file, kati_stamp_file,
-                          overlays, debug_file):
+                          overlays, installed_prebuilts, debug_file):
   """Creates and writes a split manifest by inspecting build inputs.
 
   Args:
@@ -429,6 +429,9 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
     kati_stamp_file: The path to a .kati_stamp file from a build.
     overlays: A list of paths to treat as overlays when parsing the kati stamp
       file.
+    installed_prebuilts: A list of paths for which to create "fake" repo
+      entries. These entries allow the tool to recognize modules that installed
+      rather than being sync'd via a manifest.
     debug_file: If not None, the path to write JSON debug info.
   """
   debug_info = {}
@@ -443,6 +446,7 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
       add_projects.setdefault(project, []).append(config_file)
 
   repo_projects = get_repo_projects(repo_list_file)
+  repo_projects.update({ip:ip for ip in installed_prebuilts})
 
   inputs = get_ninja_inputs(ninja_binary, ninja_build_file, targets)
   input_projects = set(get_input_projects(repo_projects, inputs).keys())
@@ -569,6 +573,7 @@ def main(argv):
         "kati-stamp=",
         "skip-kati",
         "overlay=",
+        "installed-prebuilt=",
     ])
   except getopt.GetoptError as err:
     print(__doc__, file=sys.stderr)
@@ -585,6 +590,7 @@ def main(argv):
   ninja_binary = "ninja"
   kati_stamp_file = None
   overlays = []
+  installed_prebuilts = []
   ignore_default_config = False
   skip_kati = False
   skip_module_info = False
@@ -619,6 +625,8 @@ def main(argv):
       skip_kati = True
     elif o in ("--overlay"):
       overlays.append(a)
+    elif o in ("--installed-prebuilt"):
+      installed_prebuilts.append(a)
     else:
       assert False, "unknown option \"%s\"" % o
 
@@ -670,6 +678,7 @@ def main(argv):
       module_info_file=module_info_file,
       kati_stamp_file=kati_stamp_file,
       overlays=overlays,
+      installed_prebuilts=installed_prebuilts,
       debug_file=debug_file)
 
 
