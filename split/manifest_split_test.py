@@ -242,13 +242,14 @@ class ManifestSplitTest(unittest.TestCase):
         '<project name="platform/project1" path="system/project1" />')
 
   def test_create_manifest_sha1_element(self):
+    # TODO(b/169067904): This test is flaky. See bug for details.
     manifest = ET.ElementTree(ET.fromstring('<manifest></manifest>'))
     manifest_sha1 = hashlib.sha1(ET.tostring(manifest.getroot())).hexdigest()
     self.assertEqual(
         ET.tostring(
             manifest_split.create_manifest_sha1_element(
                 manifest, 'test_manifest')).decode(),
-        '<hash name="test_manifest" type="sha1" value="%s" />' % manifest_sha1)
+        '<hash type="sha1" name="test_manifest" value="%s" />' % manifest_sha1)
 
   @mock.patch.object(subprocess, 'check_output', autospec=True)
   def test_create_split_manifest(self, mock_check_output):
@@ -348,7 +349,7 @@ class ManifestSplitTest(unittest.TestCase):
           ['droid'], manifest_file.name, split_manifest_file.name,
           [config_file.name], repo_list_file.name, 'build-target.ninja',
           'ninja', module_info_file.name, 'unused kati stamp',
-          ['unused overlay'], debug_file)
+          ['unused overlay'], [], debug_file)
       split_manifest = ET.parse(split_manifest_file.name)
       split_manifest_projects = [
           child.attrib['name']
@@ -434,12 +435,148 @@ class ManifestSplitTest(unittest.TestCase):
           kati_stamp_file=None,
           module_info_file=None,
           overlays=[],
+          installed_prebuilts=[],
           debug_file=None)
 
     mock_get_ninja_inputs.assert_called_with(
         'ninja', 'build-target.ninja', ['droid'])
     mock_get_kati_makefiles.assert_not_called()
     mock_init.assert_not_called()
+
+  @mock.patch.object(subprocess, 'check_output', autospec=True)
+  def test_create_split_manifest_installed_prebuilt(self, mock_check_output):
+
+    # The purpose of this test is to verify that create_split_manifests treats
+    # installed prebuilts as projects, even though the installed prebuilts are
+    # not in the manifest. This use case occurs when installed prebuilts
+    # contribute modules to the build, but the installed prebuilts themselves
+    # aren't sourced from the manifest.
+
+    with tempfile.NamedTemporaryFile('w+t') as repo_list_file, \
+      tempfile.NamedTemporaryFile('w+t') as manifest_file, \
+      tempfile.NamedTemporaryFile('w+t') as module_info_file, \
+      tempfile.NamedTemporaryFile('w+t') as split_manifest_file, \
+      tempfile.TemporaryDirectory() as temp_dir:
+
+      os.chdir(temp_dir)
+
+      repo_list_file.write("""
+        system/project1 : platform/project1
+        vendor/project1 : vendor/project1""")
+      repo_list_file.flush()
+
+      # Here we have small manifest that does not include "prebuilt/project3"
+      # or "prebuilt/project4".
+
+      manifest_file.write("""
+        <manifest>
+          <project name="platform/project1" path="system/project1" />
+          <project name="vendor/project1" path="vendor/project1" />
+        </manifest>""")
+      manifest_file.flush()
+
+      # Here's the module_info.json file. It contains modules whose paths are
+      # "prebuilt/project3" and "prebult/project4", which are not found in the
+      # manifest. Normally create_split_manifest doesn't tolerate a path that
+      # doesn't correspond to a manifest project. However, this test verifies
+      # that you can use these modules if you tell create_split_manifest about
+      # the installed prebuilts via a parameter.
+
+      module_info_file.write("""{
+        "droid": { "class": ["EXECUTABLES"], "path": ["system/project1"], "dependencies": [] },
+        "target_a": { "class": ["EXECUTABLES"], "path": ["system/project1"], "dependencies": ["target_b", "target_c"] },
+        "target_b": { "class": ["SHARED_LIBRARIES"], "path": ["prebuilt/project3"], "dependencies": [] },
+        "target_c": { "class": ["SHARED_LIBRARIES"], "path": ["prebuilt/project4"], "dependencies": [] }
+      }""")
+      module_info_file.flush()
+
+      # droid needs inputs from project1
+      ninja_inputs_droid = b"""
+      system/project1/file1
+      """
+
+      # target_a needs inputs from prebuilt/project3 and prebuilt/project4
+      ninja_inputs_target_a = b"""
+      prebuilt/project3/file2
+      prebuilt/project4/file3
+      """
+
+      # target_b needs inputs from prebuilt/project3
+      ninja_inputs_target_b = b"""
+      prebuilt/project3/file4
+      """
+
+      # target_c needs inputs from prebuilt/project4
+      ninja_inputs_target_c = b"""
+      prebuilt/project4/file5
+      """
+
+      product_makefile = 'vendor/project1/product.mk'
+      os.makedirs(os.path.dirname(product_makefile))
+      os.mknod(product_makefile)
+      kati_stamp_dump = product_makefile.encode()
+
+      mock_check_output.side_effect = [
+          ninja_inputs_droid,
+          kati_stamp_dump,
+          ninja_inputs_target_a,
+          ninja_inputs_target_b,
+          ninja_inputs_target_c,
+      ]
+
+      debug_file = os.path.join(temp_dir, 'debug.json')
+
+      manifest_split.create_split_manifest(
+          targets=['droid'],
+          manifest_file=manifest_file.name,
+          split_manifest_file=split_manifest_file.name,
+          config_files=[],
+          repo_list_file=repo_list_file.name,
+          ninja_build_file='build-target.ninja',
+          ninja_binary='ninja',
+          module_info_file=module_info_file.name,
+          kati_stamp_file='unused kati stamp',
+          overlays=['unused overlay'],
+
+          # This is a key part of the test. Passing these two "projects" as
+          # prebuilts allows create_split_manifest to recognize them as
+          # projects even though they are not in the manifest.
+
+          installed_prebuilts=['prebuilt/project3', 'prebuilt/project4'],
+
+          debug_file = debug_file)
+
+      split_manifest = ET.parse(split_manifest_file.name)
+
+      split_manifest_projects = [
+          child.attrib['name']
+          for child in split_manifest.getroot().findall('project')
+      ]
+
+      # Note that the installed prebuilts do not appear in the final split
+      # manfiest output because they were not in the manifest to begin with.
+
+      self.assertEqual(
+          split_manifest_projects,
+          [
+              # From droid
+              'platform/project1',
+              # Inclusion from the Kati makefile stamp
+              'vendor/project1',
+          ])
+
+      with open(debug_file) as debug_fp:
+        debug_data = json.load(debug_fp)
+
+        # Dependency for droid, but no other adjacent modules
+        self.assertTrue(debug_data['platform/project1']['direct_input'])
+        self.assertFalse(debug_data['platform/project1']['adjacent_input'])
+        self.assertFalse(debug_data['platform/project1']['deps_input'])
+
+        # Included due to the Kati makefile stamp
+        self.assertEqual(debug_data['vendor/project1']['kati_makefiles'][0],
+                         product_makefile)
+
 
 if __name__ == '__main__':
   unittest.main()
