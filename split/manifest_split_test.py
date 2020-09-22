@@ -242,14 +242,16 @@ class ManifestSplitTest(unittest.TestCase):
         '<project name="platform/project1" path="system/project1" />')
 
   def test_create_manifest_sha1_element(self):
-    # TODO(b/169067904): This test is flaky. See bug for details.
     manifest = ET.ElementTree(ET.fromstring('<manifest></manifest>'))
     manifest_sha1 = hashlib.sha1(ET.tostring(manifest.getroot())).hexdigest()
-    self.assertEqual(
-        ET.tostring(
-            manifest_split.create_manifest_sha1_element(
-                manifest, 'test_manifest')).decode(),
-        '<hash type="sha1" name="test_manifest" value="%s" />' % manifest_sha1)
+    actual_sha1_element = manifest_split.create_manifest_sha1_element(
+        manifest, 'test_manifest')
+    self.assertEqual(actual_sha1_element.tag, 'hash')
+    self.assertEqual(actual_sha1_element.attrib, {
+        'type': 'sha1',
+        'name': 'test_manifest',
+        'value': manifest_sha1,
+    })
 
   @mock.patch.object(subprocess, 'check_output', autospec=True)
   def test_create_split_manifest(self, mock_check_output):
