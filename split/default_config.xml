@@ -10,6 +10,10 @@
     <add_project name="platform/test/vts-testcase/nbu" />
     <add_project name="platform/test/vts-testcase/performance" />
     <add_project name="platform/test/vts-testcase/vndk" />
+    <!-- test/framework/build/Android.mk runs 'cd' on these dirs -->
+    <add_project name="platform/test/vti/dashboard" />
+    <add_project name="platform/test/vti/test_serving" />
+    <add_project name="platform/tools/acloud" />
     <!-- ============================================================= -->
 
     <!-- ============================================================= -->
@@ -27,6 +31,17 @@
     <!-- ============================================================= -->
     <!-- Needed for the repo tool. -->
     <add_project name="platform/tools/repohooks" />
+    <!-- ============================================================= -->
+
+    <!-- ============================================================= -->
+    <!-- b/159710865: prebuilts/cmdline-tools dependency not visible to ninja. -->
+    <add_project name="platform/prebuilts/cmdline-tools" />
+    <!-- ============================================================= -->
+
+    <!-- ============================================================= -->
+    <!-- b/151879369: libc_jemalloc_wrapper's static_libs sources are not visible to ninja. -->
+    <!-- "libc_jemalloc_wrapper" depends on undefined module "libjemalloc5" -->
+    <add_project name="platform/external/jemalloc_new" />
     <!-- ============================================================= -->
 </config>
 
