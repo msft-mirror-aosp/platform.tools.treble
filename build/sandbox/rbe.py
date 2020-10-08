@@ -25,7 +25,6 @@ import tempfile
 TOOLS_DIR = 'prebuilts/remoteexecution-client/latest'
 _RBE_ENV = {
     'USE_RBE': 'true',
-    'RBE_HTTP_PROXY': '10.1.2.1:8011',
     'RBE_DIR': TOOLS_DIR,
     'NINJA_REMOTE_NUM_JOBS': '500',
     'FLAG_log_dir': 'out',
@@ -154,8 +153,18 @@ def setup(env, build_log=subprocess.DEVNULL):
   # Restart RBE http proxy.
   script_dir = os.path.dirname(os.path.abspath(__file__))
   proxy_kill_command = ['killall', 'tinyproxy']
+  port = 8000 + random.randint(0,1000)
+  new_conf_contents = ''
+  with open(os.path.join(script_dir, 'rbe_http_proxy.conf'), 'r') as base_conf:
+    new_conf_contents = base_conf.read()
+  with tempfile.NamedTemporaryFile(prefix='rbe_http_proxy_', mode='w', delete=False) as new_conf:
+    new_conf.write(new_conf_contents)
+    new_conf.write('\nPort %i\n' % port)
+    new_conf.close()
+  env.append("RBE_HTTP_PROXY=10.1.2.1:%i" % port)
+
   proxy_command = [
-      'netns-exec', 'rbe-open-ns', 'tinyproxy', '-c', 'rbe_http_proxy.conf', '-d']
+      'netns-exec', 'rbe-open-ns', 'tinyproxy', '-c', new_conf.name, '-d']
   rbe_proxy_log = tempfile.NamedTemporaryFile(prefix='tinyproxy_', delete=False)
   if build_log != subprocess.DEVNULL:
     print('RBE http proxy restart commands:', file=build_log)
