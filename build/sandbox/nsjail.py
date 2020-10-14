@@ -67,7 +67,8 @@ def run(command,
         env=[],
         nsjail_wrapper=[],
         stdout=None,
-        stderr=None):
+        stderr=None,
+        allow_network=False):
   """Run inside an NsJail sandbox.
 
   Args:
@@ -100,6 +101,7 @@ def run(command,
     stderr: the standard error for all printed messages. Valid values are None, a file
       descriptor or file object, and subprocess.STDOUT (which indicates that all stderr
       should be redirected to stdout). A None value means sys.stderr is used.
+    allow_network: allow access to host network
 
   Returns:
     A list of strings with the command executed.
@@ -125,7 +127,8 @@ def run(command,
       extra_nsjail_args=extra_nsjail_args,
       quiet=quiet,
       env=env,
-      nsjail_wrapper=nsjail_wrapper)
+      nsjail_wrapper=nsjail_wrapper,
+      allow_network=allow_network)
 
   run_command(
       nsjail_command=nsjail_command,
@@ -155,7 +158,8 @@ def get_command(command,
         extra_nsjail_args=[],
         quiet=False,
         env=[],
-        nsjail_wrapper=[]):
+        nsjail_wrapper=[],
+        allow_network=False):
   """Get command to run nsjail sandbox.
 
   Args:
@@ -179,6 +183,7 @@ def get_command(command,
     quiet: If true, the function will not display the command and
       will pass -quiet argument to nsjail
     env: An array of environment variables to define in the jail in the `var=val` syntax.
+    allow_network: allow access to host network
 
   Returns:
     A list of strings with the command to execute.
@@ -294,6 +299,11 @@ def get_command(command,
 
   for var in env:
     nsjail_command.extend(['--env', var])
+
+  if allow_network:
+    nsjail_command.extend(['--disable_clone_newnet',
+                           '--bindmount_ro',
+                           '/etc/resolv.conf'])
 
   nsjail_command.extend(extra_nsjail_args)
 
@@ -442,6 +452,10 @@ def parse_args():
       action='append',
       help='Specify an environment variable to the NSJail sandbox. Can be specified '
       'muliple times. Syntax: var_name=value')
+  parser.add_argument(
+      '--allow_network', action='store_true',
+      help='If provided, allow access to the host network. WARNING: Using this '
+      'flag exposes the network inside jail. Use only when needed.')
   return parser.parse_args()
 
 def run_with_args(args):
@@ -472,7 +486,8 @@ def run_with_args(args):
       readonly_bind_mounts=args.bindmount_ro,
       dry_run=args.dry_run,
       quiet=args.quiet,
-      env=args.env)
+      env=args.env,
+      allow_network=args.allow_network)
 
 def main():
   run_with_args(parse_args())
