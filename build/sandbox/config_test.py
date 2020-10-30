@@ -25,8 +25,8 @@ _TEST_CONFIG_XML = """<config>
     </build_config>
   </target>
   <target name="android_target_2" tags="cool,hot">
-    <fast_merge_config framework_images="image1,image2"
-      misc_info_keys="misc_info_keys.txt"/>
+    <config name="fmc_framework_images" value="image1,image2"/>
+    <config name="fmc_misc_info_keys" value="misc_info_keys.txt"/>
     <goal name="common_goal"/>
     <build_config tags="warm">
       <goal name="droid"/>
@@ -34,8 +34,8 @@ _TEST_CONFIG_XML = """<config>
       <goal name="goal_for_android_target_2"/>
     </build_config>
     <build_config name="build_target_2" tags="dry">
-      <fast_merge_config framework_images="bt1,bt2"
-        misc_info_keys="misc_info_keys_2.txt"/>
+      <config name="fmc_framework_images" value="bt1,bt2"/>
+      <config name="fmc_misc_info_keys" value="misc_info_keys_2.txt"/>
       <goal name="droid"/>
       <goal name="VAR=a"/>
     </build_config>
@@ -278,19 +278,23 @@ class ConfigTest(unittest.TestCase):
       self.assertIsNone(
           cfg.get_allowed_projects_file('no_allowed_projects_file'))
 
-  def testFastMergeConfig(self):
+  def testMergeConfig(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
       test_config.write(_TEST_CONFIG_XML)
       test_config.flush()
       cfg = config.factory(test_config.name)
 
       bc_at2 = cfg.get_build_config('android_target_2')
-      self.assertEqual(bc_at2.fmc_framework_images, 'image1,image2')
-      self.assertEqual(bc_at2.fmc_misc_info_keys, 'misc_info_keys.txt')
+      self.assertDictEqual(bc_at2.configurations, {
+        'fmc_framework_images': 'image1,image2',
+        'fmc_misc_info_keys': 'misc_info_keys.txt'
+      })
 
       bc_bt2 = cfg.get_build_config('build_target_2')
-      self.assertEqual(bc_bt2.fmc_framework_images, 'bt1,bt2')
-      self.assertEqual(bc_bt2.fmc_misc_info_keys, 'misc_info_keys_2.txt')
+      self.assertDictEqual(bc_bt2.configurations, {
+        'fmc_framework_images': 'bt1,bt2',
+        'fmc_misc_info_keys': 'misc_info_keys_2.txt'
+      })
 
 if __name__ == '__main__':
   unittest.main()
