@@ -42,16 +42,11 @@ import xml.etree.ElementTree as ET
 #
 # Child elements:
 #
-#   fast_merge_config: The configuration options for fast merge.
+#   config: A generic name-value configuration element.
 #
 #     Attributes:
-#
-#       framework_images: Comma-separated list of image names that
-#         should come from the framework build.
-#
-#       misc_info_keys: A path to the newline-separated config file containing
-#       keys to obtain from the framework instance of misc_info.txt, used for
-#       creating vbmeta.img.
+#       name: Name of the configuration
+#       value: Value of the configuration
 #
 #   overlay: An overlay to be mounted while building the target.
 #
@@ -112,11 +107,6 @@ class BuildConfig(object):
     allow_readwrite: List of directories to be mounted as rw.
     allowed_projects_file: a string path name of a file with a containing
       allowed projects.
-    fmc_framework_images: For a fast merge config (FMC), the comma-separated
-      list of image names that should come from the framework build.
-    fmc_misc_info_keys: For a fast merge config (FMC), A path to the
-      newline-separated config file containing keys to obtain from the
-      framework instance of misc_info.txt, used for creating vbmeta.img.
   """
 
   def __init__(self,
@@ -129,8 +119,7 @@ class BuildConfig(object):
                allow_readwrite_all=False,
                allow_readwrite=(),
                allowed_projects_file=None,
-               fmc_framework_images=None,
-               fmc_misc_info_keys=None):
+               configurations={}):
     super().__init__()
     self.name = name
     self.android_target = android_target
@@ -141,8 +130,7 @@ class BuildConfig(object):
     self.allow_readwrite_all = allow_readwrite_all
     self.allow_readwrite = list(allow_readwrite)
     self.allowed_projects_file = allowed_projects_file
-    self.fmc_framework_images = fmc_framework_images
-    self.fmc_misc_info_keys = fmc_misc_info_keys
+    self.configurations = configurations
 
   def validate(self):
     """Run tests to validate build configuration"""
@@ -190,10 +178,18 @@ class BuildConfig(object):
         views=_get_views(config_elem, fs_view_map, base_config.views),
         allow_readwrite_all=_get_allowed_readwrite_all(
             config_elem, base_config.allow_readwrite_all),
-        fmc_framework_images=_get_fast_config_framework_images(
-            config_elem, base_config.fmc_framework_images),
-        fmc_misc_info_keys=_get_fast_config_misc_info_keys(
-            config_elem, base_config.fmc_misc_info_keys))
+        configurations=_get_configurations(config_elem,
+                                           base_config.configurations)
+    )
+
+
+def _get_configurations(config_elem, base):
+  configs = dict(base)
+  configs.update({
+      config.get('name'): config.get('value')
+      for config in config_elem.findall('config')
+  })
+  return configs
 
 
 def _get_build_config_goals(config_elem, base=None):
@@ -284,42 +280,6 @@ def _get_allow_readwrite(config_elem, base=None):
   """
   return (base +
           [o.get('path') for o in config_elem.findall('allow_readwrite')])
-
-
-def _get_fast_config_framework_images(config_elem, default=None):
-  """Retrieves a comma separated string containing framework images to be used
-    for merging in fast mode
-
-  Args:
-    config_elem: A build_config or target xml element.
-    default: Value to use if element doesn't contain the
-      fast_merge_config element or framework_images attribute.
-
-  Returns:
-    A string of comma separated image names
-  """
-  fast_merge_config = config_elem.find('fast_merge_config')
-  if fast_merge_config is None:
-    return default
-  images = fast_merge_config.get('framework_images')
-  return images if images else default
-
-def _get_fast_config_misc_info_keys(config_elem, default=None):
-  """Retrieves the misc_info_keys path setting
-
-  Args:
-    config_elem: A build_config or target xml element.
-    default: Value to use if element doesn't contain the
-      fast_merge_config element or misc_info_keys attribute.
-
-  Returns:
-    A path to the misc_info_keys file
-  """
-  fast_merge_config = config_elem.find('fast_merge_config')
-  if fast_merge_config is None:
-    return default
-  misc_info_keys = fast_merge_config.get('misc_info_keys')
-  return misc_info_keys if misc_info_keys else default
 
 
 def _get_fs_view_map(config):
