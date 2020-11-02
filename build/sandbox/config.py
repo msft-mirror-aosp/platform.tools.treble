@@ -99,6 +99,7 @@ class BuildConfig(object):
   Attributes:
     name: name of the build_target used to pull the configuration.
     android_target: The name of the android target used with lunch.
+    tags: List of tags associated with the build target config
     build_goals: List of goals to be used while building the target.
     overlays: List of overlays to be mounted.
     views: A list of (source, destination) string path tuple to be mounted.
@@ -107,6 +108,7 @@ class BuildConfig(object):
     allow_readwrite: List of directories to be mounted as rw.
     allowed_projects_file: a string path name of a file with a containing
       allowed projects.
+    configurations: a map of name to value configurations
   """
 
   def __init__(self,
@@ -119,7 +121,7 @@ class BuildConfig(object):
                allow_readwrite_all=False,
                allow_readwrite=(),
                allowed_projects_file=None,
-               configurations={}):
+               configurations=None):
     super().__init__()
     self.name = name
     self.android_target = android_target
@@ -130,7 +132,7 @@ class BuildConfig(object):
     self.allow_readwrite_all = allow_readwrite_all
     self.allow_readwrite = list(allow_readwrite)
     self.allowed_projects_file = allowed_projects_file
-    self.configurations = configurations
+    self.configurations = configurations or {}
 
   def validate(self):
     """Run tests to validate build configuration"""
