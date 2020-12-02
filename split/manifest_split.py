@@ -67,14 +67,14 @@ options:
 from __future__ import print_function
 
 import getopt
-import hashlib
 import json
 import logging
 import os
-import pkg_resources
+import pkgutil
 import re
 import subprocess
 import sys
+import tempfile
 from typing import Dict, List, Pattern, Set, Tuple
 import xml.etree.ElementTree as ET
 
@@ -90,8 +90,7 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 # Projects determined to be needed despite the dependency not being visible
 # to ninja.
-DEFAULT_CONFIG_PATH = pkg_resources.resource_filename(__name__,
-                                                      "default_config.xml")
+DEFAULT_CONFIG_XML = "default_config.xml"
 
 # Pattern that matches a java dependency.
 _JAVA_LIB_PATTERN = re.compile(
@@ -437,23 +436,6 @@ def update_manifest(manifest, input_projects, remove_projects):
   return manifest
 
 
-def create_manifest_sha1_element(manifest, name):
-  """Creates and returns an ElementTree 'hash' Element using a sha1 hash.
-
-  Args:
-    manifest: The manifest ElementTree to hash.
-    name: The name string to give this element.
-
-  Returns:
-    The ElementTree 'hash' Element.
-  """
-  sha1_element = ET.Element("hash")
-  sha1_element.set("type", "sha1")
-  sha1_element.set("name", name)
-  sha1_element.set("value",
-                   hashlib.sha1(ET.tostring(manifest.getroot())).hexdigest())
-  return sha1_element
-
 @dataclasses.dataclass
 class DebugInfo:
   """Simple class to store structured debug info for a project."""
@@ -587,12 +569,8 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
   logger.info("%s projects - complete", len(input_projects))
 
   original_manifest = ET.parse(manifest_file)
-  original_sha1 = create_manifest_sha1_element(original_manifest, "original")
   split_manifest = update_manifest(original_manifest, input_projects,
                                    config.remove_projects.keys())
-  split_manifest.getroot().append(original_sha1)
-  split_manifest.getroot().append(
-      create_manifest_sha1_element(split_manifest, "self"))
   split_manifest.write(split_manifest_file)
 
   if debug_file:
@@ -693,9 +671,6 @@ def main(argv):
     print("**Missing required flag --split-manifest**", file=sys.stderr)
     sys.exit(2)
 
-  if not ignore_default_config:
-    config_files.insert(0, DEFAULT_CONFIG_PATH)
-
   if skip_module_info:
     if module_info_file:
       logging.warning("User provided both --skip-module-info and --module-info args.  Arg --module-info ignored.")
@@ -717,19 +692,25 @@ def main(argv):
         os.environ["ANDROID_BUILD_TOP"], "out",
         "combined-%s.ninja" % os.environ["TARGET_PRODUCT"])
 
-  create_split_manifest(
-      targets=args,
-      manifest_file=manifest_file,
-      split_manifest_file=split_manifest_file,
-      config_files=config_files,
-      repo_list_file=repo_list_file,
-      ninja_build_file=ninja_build_file,
-      ninja_binary=ninja_binary,
-      module_info_file=module_info_file,
-      kati_stamp_file=kati_stamp_file,
-      overlays=overlays,
-      installed_prebuilts=installed_prebuilts,
-      debug_file=debug_file)
+  with tempfile.NamedTemporaryFile() as default_config_file:
+    if not ignore_default_config:
+      default_config_file.write(pkgutil.get_data(__name__, DEFAULT_CONFIG_XML))
+      default_config_file.flush()
+      config_files.insert(0, default_config_file.name)
+
+    create_split_manifest(
+        targets=args,
+        manifest_file=manifest_file,
+        split_manifest_file=split_manifest_file,
+        config_files=config_files,
+        repo_list_file=repo_list_file,
+        ninja_build_file=ninja_build_file,
+        ninja_binary=ninja_binary,
+        module_info_file=module_info_file,
+        kati_stamp_file=kati_stamp_file,
+        overlays=overlays,
+        installed_prebuilts=installed_prebuilts,
+        debug_file=debug_file)
 
 
 if __name__ == "__main__":
