@@ -38,6 +38,11 @@ python_binary_host {
     data: [
         "default_config.xml",
     ],
+    version: {
+      py3: {
+        embedded_launcher: true,
+      },
+    },
 }
 
 python_test_host {
