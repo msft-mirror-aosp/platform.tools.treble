@@ -67,15 +67,19 @@ options:
 from __future__ import print_function
 
 import getopt
-import hashlib
 import json
 import logging
 import os
-import pkg_resources
+import pkgutil
 import re
 import subprocess
 import sys
+import tempfile
+from typing import Dict, List, Pattern, Set, Tuple
 import xml.etree.ElementTree as ET
+
+import dataclasses
+
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -86,8 +90,7 @@ logger = logging.getLogger(os.path.basename(__file__))
 
 # Projects determined to be needed despite the dependency not being visible
 # to ninja.
-DEFAULT_CONFIG_PATH = pkg_resources.resource_filename(__name__,
-                                                      "default_config.xml")
+DEFAULT_CONFIG_XML = "default_config.xml"
 
 # Pattern that matches a java dependency.
 _JAVA_LIB_PATTERN = re.compile(
@@ -95,29 +98,73 @@ _JAVA_LIB_PATTERN = re.compile(
     '^out/target/common/obj/JAVA_LIBRARIES/(.+)_intermediates/classes-header.jar$'
 )
 
-def read_config(config_file):
-  """Reads a config XML file to find extra projects to add or remove.
 
-  Args:
-    config_file: The filename of the config XML.
+@dataclasses.dataclass
+class PathMappingConfig:
+  pattern: Pattern[str]
+  sub: str
 
-  Returns:
-    A tuple of (set of remove_projects, set of add_projects) from the config.
+
+@dataclasses.dataclass
+class ManifestSplitConfig:
+  """Holds the configuration for the split manifest tool.
+
+  Attributes:
+    remove_projects: A Dict of project name to the config file that specified
+      this project, for projects that should be removed from the resulting
+      manifest.
+    add_projects: A Dict of project name to the config file that specified
+      this project, for projects that should be added to the resulting manifest.
+    path_mappings: A list of PathMappingConfigs to modify a path in the build
+      sandbox to the path in the manifest.
   """
-  root = ET.parse(config_file).getroot()
-  remove_projects = set(
-      [child.attrib["name"] for child in root.findall("remove_project")])
-  add_projects = set(
-      [child.attrib["name"] for child in root.findall("add_project")])
-  return remove_projects, add_projects
+  remove_projects: Dict[str, str]
+  add_projects: Dict[str, str]
+  path_mappings: List[PathMappingConfig]
+
+  @classmethod
+  def from_config_files(cls, config_files: List[str]):
+    """Reads from a list of config XML files.
+
+    Args:
+      config_files: A list of config XML filenames.
+
+    Returns:
+      A ManifestSplitConfig from the files.
+    """
+    remove_projects: Dict[str, str] = {}
+    add_projects: Dict[str, str] = {}
+    path_mappings = []
+    for config_file in config_files:
+      root = ET.parse(config_file).getroot()
+
+      remove_projects.update({
+          c.attrib["name"]: config_file for c in root.findall("remove_project")
+      })
+
+      add_projects.update(
+          {c.attrib["name"]: config_file for c in root.findall("add_project")})
+
+      path_mappings.extend([
+          PathMappingConfig(
+              re.compile(child.attrib["pattern"]), child.attrib["sub"])
+          for child in root.findall("path_mapping")
+      ])
+
+    return cls(remove_projects, add_projects, path_mappings)
 
 
-def get_repo_projects(repo_list_file):
+def get_repo_projects(repo_list_file, path_mappings):
   """Returns a dict of { project path : project name } using 'repo list'.
+
+  The path_mappings stop on the first match mapping.  If the mapping results in
+  an empty string, that entry is removed.
 
   Args:
     repo_list_file: An optional filename to read instead of calling the repo
       list command.
+    path_mappings: A list of PathMappingConfigs to modify a path in the build
+      sandbox to the path in the manifest.
   """
   repo_list = []
 
@@ -129,7 +176,18 @@ def get_repo_projects(repo_list_file):
         "repo",
         "list",
     ]).decode().strip("\n").split("\n")
-  return dict([entry.split(" : ") for entry in repo_list])
+
+  repo_dict = {}
+  for entry in repo_list:
+    path, project = entry.split(" : ")
+    for mapping in path_mappings:
+      if mapping.pattern.fullmatch(path):
+        path = mapping.pattern.sub(mapping.sub, path)
+        break
+    # If the resulting path mapping is empty, then don't add entry
+    if path:
+      repo_dict[path] = project
+  return repo_dict
 
 
 class ModuleInfo:
@@ -378,34 +436,15 @@ def update_manifest(manifest, input_projects, remove_projects):
   return manifest
 
 
-def create_manifest_sha1_element(manifest, name):
-  """Creates and returns an ElementTree 'hash' Element using a sha1 hash.
-
-  Args:
-    manifest: The manifest ElementTree to hash.
-    name: The name string to give this element.
-
-  Returns:
-    The ElementTree 'hash' Element.
-  """
-  sha1_element = ET.Element("hash")
-  sha1_element.set("type", "sha1")
-  sha1_element.set("name", name)
-  sha1_element.set("value",
-                   hashlib.sha1(ET.tostring(manifest.getroot())).hexdigest())
-  return sha1_element
-
-
-class DebugInfo():
+@dataclasses.dataclass
+class DebugInfo:
   """Simple class to store structured debug info for a project."""
-
-  def __init__(self):
-    self.direct_input = False
-    self.adjacent_input = False
-    self.deps_input = False
-    self.kati_makefiles = []
-    self.manual_add_configs = []
-    self.manual_remove_configs = []
+  direct_input: bool = False
+  adjacent_input: bool = False
+  deps_input: bool = False
+  kati_makefiles: List[str] = dataclasses.field(default_factory=list)
+  manual_add_config: str = ""
+  manual_remove_config: str = ""
 
 
 def create_split_manifest(targets, manifest_file, split_manifest_file,
@@ -436,16 +475,9 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
   """
   debug_info = {}
 
-  remove_projects = {}
-  add_projects = {}
-  for config_file in config_files:
-    config_remove_projects, config_add_projects = read_config(config_file)
-    for project in config_remove_projects:
-      remove_projects.setdefault(project, []).append(config_file)
-    for project in config_add_projects:
-      add_projects.setdefault(project, []).append(config_file)
+  config = ManifestSplitConfig.from_config_files(config_files)
 
-  repo_projects = get_repo_projects(repo_list_file)
+  repo_projects = get_repo_projects(repo_list_file, config.path_mappings)
   repo_projects.update({ip:ip for ip in installed_prebuilts})
 
   inputs = get_ninja_inputs(ninja_binary, ninja_build_file, targets)
@@ -467,18 +499,18 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
   else:
     logger.info("Kati makefiles projects skipped.")
 
-  for project, configs in add_projects.items():
-    debug_info.setdefault(project, DebugInfo()).manual_add_configs = configs
-  for project, configs in remove_projects.items():
-    debug_info.setdefault(project, DebugInfo()).manual_remove_configs = configs
-  input_projects = input_projects.union(add_projects.keys())
+  for project, cfile in config.add_projects.items():
+    debug_info.setdefault(project, DebugInfo()).manual_add_config = cfile
+  for project, cfile in config.remove_projects.items():
+    debug_info.setdefault(project, DebugInfo()).manual_remove_config = cfile
+  input_projects = input_projects.union(config.add_projects.keys())
   logger.info("%s projects after including manual additions.",
               len(input_projects))
 
   # Remove projects from our set of input projects before adding adjacent
   # modules, so that no project is added only because of an adjacent
   # dependency in a to-be-removed project.
-  input_projects = input_projects.difference(remove_projects.keys())
+  input_projects = input_projects.difference(config.remove_projects.keys())
 
   # While we still have projects whose modules we haven't checked yet,
   if module_info_file:
@@ -537,12 +569,8 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
   logger.info("%s projects - complete", len(input_projects))
 
   original_manifest = ET.parse(manifest_file)
-  original_sha1 = create_manifest_sha1_element(original_manifest, "original")
   split_manifest = update_manifest(original_manifest, input_projects,
-                                   remove_projects.keys())
-  split_manifest.getroot().append(original_sha1)
-  split_manifest.getroot().append(
-      create_manifest_sha1_element(split_manifest, "self"))
+                                   config.remove_projects.keys())
   split_manifest.write(split_manifest_file)
 
   if debug_file:
@@ -643,9 +671,6 @@ def main(argv):
     print("**Missing required flag --split-manifest**", file=sys.stderr)
     sys.exit(2)
 
-  if not ignore_default_config:
-    config_files.append(DEFAULT_CONFIG_PATH)
-
   if skip_module_info:
     if module_info_file:
       logging.warning("User provided both --skip-module-info and --module-info args.  Arg --module-info ignored.")
@@ -667,19 +692,25 @@ def main(argv):
         os.environ["ANDROID_BUILD_TOP"], "out",
         "combined-%s.ninja" % os.environ["TARGET_PRODUCT"])
 
-  create_split_manifest(
-      targets=args,
-      manifest_file=manifest_file,
-      split_manifest_file=split_manifest_file,
-      config_files=config_files,
-      repo_list_file=repo_list_file,
-      ninja_build_file=ninja_build_file,
-      ninja_binary=ninja_binary,
-      module_info_file=module_info_file,
-      kati_stamp_file=kati_stamp_file,
-      overlays=overlays,
-      installed_prebuilts=installed_prebuilts,
-      debug_file=debug_file)
+  with tempfile.NamedTemporaryFile() as default_config_file:
+    if not ignore_default_config:
+      default_config_file.write(pkgutil.get_data(__name__, DEFAULT_CONFIG_XML))
+      default_config_file.flush()
+      config_files.insert(0, default_config_file.name)
+
+    create_split_manifest(
+        targets=args,
+        manifest_file=manifest_file,
+        split_manifest_file=split_manifest_file,
+        config_files=config_files,
+        repo_list_file=repo_list_file,
+        ninja_build_file=ninja_build_file,
+        ninja_binary=ninja_binary,
+        module_info_file=module_info_file,
+        kati_stamp_file=kati_stamp_file,
+        overlays=overlays,
+        installed_prebuilts=installed_prebuilts,
+        debug_file=debug_file)
 
 
 if __name__ == "__main__":
