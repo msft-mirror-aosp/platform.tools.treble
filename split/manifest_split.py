@@ -34,6 +34,10 @@ options:
           </config>
   --ignore-default-config
       If provided, don't include default_config.xml.
+  --installed-prebuilt
+      Specify the directory containing an installed prebuilt Android.bp file.
+      Supply this option zero or more times, once for each installed prebuilt
+      directory.
   --repo-list <path>
       Optional path to the output of the 'repo list' command. Used if the
       output of 'repo list' needs pre-processing before being used by
