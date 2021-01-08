@@ -52,6 +52,24 @@ class ManifestSplitTest(unittest.TestCase):
           manifest_split.PathMappingConfig(re.compile('p1.*'), '$0'),
       ])
 
+  def test_get_repo_projects_from_manifest(self):
+    manifest_contents = """
+      <manifest>
+        <project name="platform/project1" path="system/project1" />
+        <project name="platform/project2" path="system/project2" />
+        <project name="platform/project3" path="system/project3" />
+      </manifest>"""
+    manifest = ET.ElementTree(ET.fromstring(manifest_contents))
+    projects = manifest_split.get_repo_projects(
+        None, manifest, path_mappings=[])
+    self.assertDictEqual(
+        {
+            'system/project1': 'platform/project1',
+            'system/project2': 'platform/project2',
+            'system/project3': 'platform/project3',
+        }, projects)
+
+
   def test_get_repo_projects(self):
     with tempfile.NamedTemporaryFile('w+t') as repo_list_file:
       repo_list_file.write("""
@@ -59,7 +77,7 @@ class ManifestSplitTest(unittest.TestCase):
         system/project2 : platform/project2""")
       repo_list_file.flush()
       repo_projects = manifest_split.get_repo_projects(
-          repo_list_file.name, path_mappings=[])
+          repo_list_file.name, None, path_mappings=[])
       self.assertEqual(
           repo_projects, {
               'system/project1': 'platform/project1',
@@ -79,6 +97,7 @@ class ManifestSplitTest(unittest.TestCase):
       ]
 
       repo_projects = manifest_split.get_repo_projects(repo_list_file.name,
+                                                       None,
                                                        path_mappings)
       self.assertEqual(
           repo_projects, {
