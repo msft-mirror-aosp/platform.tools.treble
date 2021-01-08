@@ -14,7 +14,7 @@
 
 python_defaults {
     name: "treble_split_default",
-    pkg_path: "treble",
+    pkg_path: "treble/split",
     version: {
         py2: {
             enabled: false,
