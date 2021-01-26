@@ -136,10 +136,6 @@ class BuildConfig(object):
 
   def validate(self):
     """Run tests to validate build configuration"""
-    # A valid build_config is required to have at least one goal.
-    if not self.build_goals:
-      raise ValueError(
-          'Error: build_config {} must have at least one goal'.format(self.name))
     if not self.name:
       raise ValueError('Error build_config must have a name.')
 
