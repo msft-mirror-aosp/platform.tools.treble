@@ -50,6 +50,9 @@ _TEST_CONFIG_XML = """<config>
     <build_config>
     </build_config>
   </target>
+  <target name="no_goals_target">
+    <build_config/>
+  </target>
 </config>
 """
 
@@ -97,6 +100,7 @@ class ConfigTest(unittest.TestCase):
               'android_target_2',
               'android_target_3',
               'build_target_2',
+              'no_goals_target',
               'some_target',
           ])
 
@@ -176,6 +180,9 @@ class ConfigTest(unittest.TestCase):
       self.assertEqual(
           cfg.get_build_goals('build_target_2'),
           ['common_goal', 'droid', 'VAR=a'])
+
+      # Test empty goals
+      self.assertEqual(cfg.get_build_goals('no_goals_target'),[])
 
   def testBuildTargetToBuildGoalsWithContexts(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
