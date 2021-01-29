@@ -13,10 +13,10 @@
 # limitations under the License.
 """Test manifest split."""
 
-import hashlib
 import json
 import mock
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -35,12 +35,40 @@ class ManifestSplitTest(unittest.TestCase):
           <add_project name="add2" />
           <remove_project name="remove1" />
           <remove_project name="remove2" />
+          <path_mapping pattern="p1.*" sub="$0" />
         </config>""")
       test_config.flush()
-      remove_projects, add_projects = manifest_split.read_config(
-          test_config.name)
-      self.assertEqual(remove_projects, set(['remove1', 'remove2']))
-      self.assertEqual(add_projects, set(['add1', 'add2']))
+      config = manifest_split.ManifestSplitConfig.from_config_files(
+          [test_config.name])
+      self.assertEqual(config.remove_projects, {
+          'remove1': test_config.name,
+          'remove2': test_config.name
+      })
+      self.assertEqual(config.add_projects, {
+          'add1': test_config.name,
+          'add2': test_config.name
+      })
+      self.assertEqual(config.path_mappings, [
+          manifest_split.PathMappingConfig(re.compile('p1.*'), '$0'),
+      ])
+
+  def test_get_repo_projects_from_manifest(self):
+    manifest_contents = """
+      <manifest>
+        <project name="platform/project1" path="system/project1" />
+        <project name="platform/project2" path="system/project2" />
+        <project name="platform/project3" path="system/project3" />
+      </manifest>"""
+    manifest = ET.ElementTree(ET.fromstring(manifest_contents))
+    projects = manifest_split.get_repo_projects(
+        None, manifest, path_mappings=[])
+    self.assertDictEqual(
+        {
+            'system/project1': 'platform/project1',
+            'system/project2': 'platform/project2',
+            'system/project3': 'platform/project3',
+        }, projects)
+
 
   def test_get_repo_projects(self):
     with tempfile.NamedTemporaryFile('w+t') as repo_list_file:
@@ -48,7 +76,29 @@ class ManifestSplitTest(unittest.TestCase):
         system/project1 : platform/project1
         system/project2 : platform/project2""")
       repo_list_file.flush()
-      repo_projects = manifest_split.get_repo_projects(repo_list_file.name)
+      repo_projects = manifest_split.get_repo_projects(
+          repo_list_file.name, None, path_mappings=[])
+      self.assertEqual(
+          repo_projects, {
+              'system/project1': 'platform/project1',
+              'system/project2': 'platform/project2',
+          })
+
+  def test_get_repo_projects_with_mappings(self):
+    with tempfile.NamedTemporaryFile('w+t') as repo_list_file:
+      repo_list_file.write("""
+        overlay/system/project1 : platform/project1
+        system/project2 : platform/project2
+        hide/this/one : platform/project3""")
+      repo_list_file.flush()
+      path_mappings = [
+          manifest_split.PathMappingConfig(re.compile('^overlay/(.*)'), '\\1'),
+          manifest_split.PathMappingConfig(re.compile('^hide/this/one.*'), ''),
+      ]
+
+      repo_projects = manifest_split.get_repo_projects(repo_list_file.name,
+                                                       None,
+                                                       path_mappings)
       self.assertEqual(
           repo_projects, {
               'system/project1': 'platform/project1',
@@ -241,18 +291,6 @@ class ManifestSplitTest(unittest.TestCase):
         ET.tostring(projects[0]).strip().decode(),
         '<project name="platform/project1" path="system/project1" />')
 
-  def test_create_manifest_sha1_element(self):
-    manifest = ET.ElementTree(ET.fromstring('<manifest></manifest>'))
-    manifest_sha1 = hashlib.sha1(ET.tostring(manifest.getroot())).hexdigest()
-    actual_sha1_element = manifest_split.create_manifest_sha1_element(
-        manifest, 'test_manifest')
-    self.assertEqual(actual_sha1_element.tag, 'hash')
-    self.assertEqual(actual_sha1_element.attrib, {
-        'type': 'sha1',
-        'name': 'test_manifest',
-        'value': manifest_sha1,
-    })
-
   @mock.patch.object(subprocess, 'check_output', autospec=True)
   def test_create_split_manifest(self, mock_check_output):
     with tempfile.NamedTemporaryFile('w+t') as repo_list_file, \
@@ -399,7 +437,7 @@ class ManifestSplitTest(unittest.TestCase):
 
         # Included due to the config file
         self.assertEqual(
-            debug_data['platform/project6']['manual_add_configs'][0],
+            debug_data['platform/project6']['manual_add_config'],
             config_file.name)
 
         # Included due to the Kati makefile stamp

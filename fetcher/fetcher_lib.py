@@ -30,6 +30,7 @@ _DEFAULT_CHUNK_SIZE = 20 * 1024 * 1024
 # HTTP errors -- used in Builbot
 _DEFAULT_MASKED_ERRORS = [404]
 _DEFAULT_RETRIED_ERRORS = [503]
+_DEFAULT_RETRIES = 10
 
 
 def _create_http_from_p12(robot_credentials_file, robot_username):
@@ -57,7 +58,7 @@ def _simple_execute(http_request,
                     masked_errors=None,
                     retried_errors=None,
                     retry_delay_seconds=5,
-                    max_tries=10):
+                    max_tries=_DEFAULT_RETRIES):
   """Execute http request and return None on specified errors.
 
   Args:
@@ -165,7 +166,7 @@ def fetch_artifact(client, build_id, target, resource_id, dest):
         fh, dl_req, chunksize=_DEFAULT_CHUNK_SIZE)
     done = False
     while not done:
-      status, done = downloader.next_chunk()
+      status, done = downloader.next_chunk(num_retries=_DEFAULT_RETRIES)
       print('Fetching...' + str(status.progress() * 100))
 
   print('Done Fetching %s to %s' % (resource_id, dest))
