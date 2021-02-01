@@ -34,6 +34,10 @@ options:
           </config>
   --ignore-default-config
       If provided, don't include default_config.xml.
+  --installed-prebuilt
+      Specify the directory containing an installed prebuilt Android.bp file.
+      Supply this option zero or more times, once for each installed prebuilt
+      directory.
   --repo-list <path>
       Optional path to the output of the 'repo list' command. Used if the
       output of 'repo list' needs pre-processing before being used by
@@ -154,15 +158,15 @@ class ManifestSplitConfig:
     return cls(remove_projects, add_projects, path_mappings)
 
 
-def get_repo_projects(repo_list_file, path_mappings):
-  """Returns a dict of { project path : project name } using 'repo list'.
+def get_repo_projects(repo_list_file, manifest, path_mappings):
+  """Returns a dict of { project path : project name } using the manifest.
 
   The path_mappings stop on the first match mapping.  If the mapping results in
   an empty string, that entry is removed.
 
   Args:
-    repo_list_file: An optional filename to read instead of calling the repo
-      list command.
+    repo_list_file: An optional filename to read instead of parsing the manifest.
+    manifest: The manifest object to scan for projects.
     path_mappings: A list of PathMappingConfigs to modify a path in the build
       sandbox to the path in the manifest.
   """
@@ -170,16 +174,14 @@ def get_repo_projects(repo_list_file, path_mappings):
 
   if repo_list_file:
     with open(repo_list_file) as repo_list_lines:
-      repo_list = [line.strip() for line in repo_list_lines if line.strip()]
+      repo_list = [line.strip().split(" : ") for line in repo_list_lines if line.strip()]
   else:
-    repo_list = subprocess.check_output([
-        "repo",
-        "list",
-    ]).decode().strip("\n").split("\n")
+    root = manifest.getroot()
+    repo_list = [(p.get("path", p.get("name")), p.get("name")) for p in root.findall("project")]
 
   repo_dict = {}
   for entry in repo_list:
-    path, project = entry.split(" : ")
+    path, project = entry
     for mapping in path_mappings:
       if mapping.pattern.fullmatch(path):
         path = mapping.pattern.sub(mapping.sub, path)
@@ -476,9 +478,12 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
   debug_info = {}
 
   config = ManifestSplitConfig.from_config_files(config_files)
+  original_manifest = ET.parse(manifest_file)
 
-  repo_projects = get_repo_projects(repo_list_file, config.path_mappings)
-  repo_projects.update({ip:ip for ip in installed_prebuilts})
+
+  repo_projects = get_repo_projects(repo_list_file, original_manifest,
+                                    config.path_mappings)
+  repo_projects.update({ip: ip for ip in installed_prebuilts})
 
   inputs = get_ninja_inputs(ninja_binary, ninja_build_file, targets)
   input_projects = set(get_input_projects(repo_projects, inputs).keys())
@@ -568,7 +573,6 @@ def create_split_manifest(targets, manifest_file, split_manifest_file,
 
   logger.info("%s projects - complete", len(input_projects))
 
-  original_manifest = ET.parse(manifest_file)
   split_manifest = update_manifest(original_manifest, input_projects,
                                    config.remove_projects.keys())
   split_manifest.write(split_manifest_file)

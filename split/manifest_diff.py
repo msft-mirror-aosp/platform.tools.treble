@@ -23,7 +23,7 @@ import textwrap
 from typing import Set
 import xml.etree.ElementTree as ET
 import dataclasses
-import xml_diff
+from treble.split import xml_diff
 
 Element = ET.Element
 Change = xml_diff.Change
