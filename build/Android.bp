@@ -63,5 +63,7 @@ python_test_host {
         "treble_build_lib",
     ],
     test_config: "test.xml",
-    test_suites: ["general-tests"],
+    test_options: {
+        unit_test: true,
+    },
 }
