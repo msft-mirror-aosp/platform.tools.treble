@@ -15,6 +15,7 @@
 """Parses config file and provides various ways of using it."""
 
 import xml.etree.ElementTree as ET
+import collections
 
 # The config file must be in XML with a structure as descibed below.
 #
@@ -54,6 +55,18 @@ import xml.etree.ElementTree as ET
 #
 #       name: The name of the overlay.
 #
+#     Child elements:
+#
+#       replacement_path:  An overlay path that supersedes any conflicts
+#         after it.
+#
+#         Properties:
+#
+#           name: The name of the replacement path. This path will will
+#             superced the same path for any subsequent conflicts. If two
+#             overlays have the same replacement path an error will occur.
+#
+#
 #   view: A map (optionally) specifying a filesystem view mapping for each
 #     target.
 #
@@ -92,6 +105,7 @@ import xml.etree.ElementTree as ET
 #             applies to all contexts. Otherwise, it applies only in the
 #             requested contexts (see get_build_goals).
 
+Overlay = collections.namedtuple('Overlay', ['name', 'replacement_paths'])
 
 class BuildConfig(object):
   """Represents configuration of a build_target.
@@ -138,7 +152,12 @@ class BuildConfig(object):
     """Run tests to validate build configuration"""
     if not self.name:
       raise ValueError('Error build_config must have a name.')
-
+    # Validate that a build config does not contain an overlay with
+    # conflicting replacement paths.
+    if len(self.overlays) > 1 and set.intersection(
+        *[o.replacement_paths for o in self.overlays]):
+      raise ValueError(
+          'Error build_config overlays have conflicting replacement_paths.')
 
   @classmethod
   def from_config(cls, config_elem, fs_view_map, base_config=None):
@@ -245,10 +264,17 @@ def _get_overlays(config_elem, base=None):
     base: Initial list of overlays to prepend to the list
 
   Returns:
-    A list of overlays to mount for a build_config or target.
+    A list of tuples of overlays and replacement paths to mount for a build_config or target.
   """
-  return base + [o.get('name') for o in config_elem.findall('overlay')]
-
+  overlays = []
+  for overlay in config_elem.findall('overlay'):
+    overlays.append(
+        Overlay(
+            name=overlay.get('name'),
+            replacement_paths=set([
+                path.get('path') for path in overlay.findall('replacement_path')
+            ])))
+  return base + overlays
 
 def _get_views(config_elem, fs_view_map, base=None):
   """Retrieves list of views from build_config or target.
@@ -451,7 +477,7 @@ class Config:
       A dict of keyed by target name. Each value in the dict is a list of
       overlay names corresponding to the target.
     """
-    return {b.name : b.overlays for b in self._build_config_map.values()}
+    return {b.name : b.overlays.name for b in self._build_config_map.values()}
 
 
   def get_fs_view_map(self):
