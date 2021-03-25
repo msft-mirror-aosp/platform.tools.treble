@@ -116,12 +116,12 @@ class BindOverlay(object):
       current_dir_destination = os.path.normpath(
         os.path.join(destination_dir, current_dir_relative))
 
-      if '.git' in subdirs or '.git' in files:
+      if '.git' in subdirs or '.git' in files or '.bindmount' in files:
         # The current dir is a git project
         # so just bind mount it
         del subdirs[:]
 
-        if (not allowed_projects or
+        if '.bindmount' in files or (not allowed_projects or
             os.path.relpath(current_dir_origin, source_dir) in allowed_projects):
           if allowed_read_write(current_dir_origin):
             self._AddBindMount(current_dir_origin, current_dir_destination, False)
@@ -140,7 +140,7 @@ class BindOverlay(object):
         del subdirs[:]
         continue
 
-      if '.git' in subdirs or '.git' in files:
+      if '.git' in subdirs or '.git' in files or '.bindmount' in files:
         del subdirs[:]
         continue
 
