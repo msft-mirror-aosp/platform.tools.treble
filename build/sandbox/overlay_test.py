@@ -145,7 +145,7 @@ class BindOverlayTest(unittest.TestCase):
     bind_mounts = o.GetBindMounts()
     bind_source = os.path.join(self.source_dir, 'overlays/unittest1/from_dir')
     bind_destination = os.path.join(self.source_dir, 'from_dir')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True, False))
     self.assertIn(os.path.join(self.source_dir, 'base_dir', 'base_project'), bind_mounts)
 
   def testValidTargetOverlayBindsAllowedProjects(self):
@@ -203,12 +203,12 @@ class BindOverlayTest(unittest.TestCase):
     bind_source = os.path.join(self.source_dir,
       'overlays/unittest1/upper_subdir/lower_subdir/from_unittest1')
     bind_destination = os.path.join(self.source_dir, 'upper_subdir/lower_subdir/from_unittest1')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True, False))
     bind_source = os.path.join(self.source_dir,
       'overlays/unittest2/upper_subdir/lower_subdir/from_unittest2')
     bind_destination = os.path.join(self.source_dir,
       'upper_subdir/lower_subdir/from_unittest2')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True, False))
 
   def testMultipleOverlaysWithAllowlist(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
@@ -237,12 +237,12 @@ class BindOverlayTest(unittest.TestCase):
     bind_destination = os.path.join(self.source_dir, 'upper_subdir/lower_subdir/from_unittest1')
     self.assertEqual(
         bind_mounts[bind_destination],
-        overlay.BindMount(source_dir=bind_source, readonly=False))
+        overlay.BindMount(source_dir=bind_source, readonly=False, allows_replacement=False))
     bind_source = os.path.join(self.source_dir,
       'overlays/unittest2/upper_subdir/lower_subdir/from_unittest2')
     bind_destination = os.path.join(self.source_dir,
       'upper_subdir/lower_subdir/from_unittest2')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True, False))
 
   def testAllowReadWriteNoGitDir(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
@@ -272,13 +272,13 @@ class BindOverlayTest(unittest.TestCase):
     self.assertIn(bind_destination, bind_mounts)
     self.assertEqual(
         bind_mounts[bind_destination],
-        overlay.BindMount(source_dir=bind_source, readonly=False))
+        overlay.BindMount(source_dir=bind_source, readonly=False, allows_replacement=False))
     bind_source = os.path.join(self.source_dir,
       'no_git_dir/no_git_subdir2')
     bind_destination = os.path.join(self.source_dir,
       'no_git_dir/no_git_subdir2')
     self.assertIn(bind_destination, bind_mounts)
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True, False))
 
   def testValidOverlaidDir(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
@@ -303,7 +303,7 @@ class BindOverlayTest(unittest.TestCase):
     bind_mounts = o.GetBindMounts()
     bind_source = os.path.join(self.source_dir, 'overlays/unittest1/from_dir')
     bind_destination = os.path.join(self.destination_dir, 'from_dir')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True, False))
 
   def testValidFilesystemViewDirectoryBind(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
@@ -331,7 +331,7 @@ class BindOverlayTest(unittest.TestCase):
     bind_mounts = o.GetBindMounts()
     bind_source = os.path.join(self.source_dir, 'overlays/unittest1/from_dir')
     bind_destination = os.path.join(self.source_dir, 'to_dir')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True, False))
 
   def testValidFilesystemViewFileBind(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
@@ -359,7 +359,7 @@ class BindOverlayTest(unittest.TestCase):
     bind_mounts = o.GetBindMounts()
     bind_source = os.path.join(self.source_dir, 'overlays/unittest1/from_file')
     bind_destination = os.path.join(self.source_dir, 'to_file')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True, False))
 
   def testInvalidTarget(self):
     with tempfile.NamedTemporaryFile('w+t') as test_config:
@@ -404,11 +404,38 @@ class BindOverlayTest(unittest.TestCase):
 
     bind_source = os.path.join(self.source_dir, 'overlays/no_git_dir2/no_git_subdir1')
     bind_destination = os.path.join(self.source_dir, 'no_git_subdir1')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True, False))
 
     bind_source = os.path.join(self.source_dir, 'overlays/no_git_dir2/no_git_subdir2')
     bind_destination = os.path.join(self.source_dir, 'no_git_subdir2')
-    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True))
+    self.assertEqual(bind_mounts[bind_destination], overlay.BindMount(bind_source, True, False))
+
+  def testReplacementPath(self):
+    with tempfile.NamedTemporaryFile('w+t') as test_config:
+      test_config.write(
+        '<?xml version="1.0" encoding="UTF-8" ?>'
+        '<config>'
+        '  <target name="unittest">'
+        '    <overlay name="unittest1">'
+        '     <replacement_path path="from_dir"/>'
+        '    </overlay>'
+        '    <build_config>'
+        '      <goal name="goal_name"/>'
+        '    </build_config>'
+        '  </target>'
+        '</config>'
+        )
+      test_config.flush()
+      o = overlay.BindOverlay(
+            cfg=config.factory(test_config.name),
+            build_target='unittest',
+            source_dir=self.source_dir)
+    self.assertIsNotNone(o)
+    bind_mounts = o.GetBindMounts()
+    bind_source = os.path.join(self.source_dir, 'overlays/unittest1/from_dir')
+    bind_destination = os.path.join(self.source_dir, 'from_dir')
+    self.assertEqual(bind_mounts[bind_destination],
+                     overlay.BindMount(bind_source, True, True))
 
 if __name__ == '__main__':
   unittest.main()

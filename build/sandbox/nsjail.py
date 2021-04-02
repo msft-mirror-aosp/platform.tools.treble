@@ -254,22 +254,22 @@ def get_command(command,
     bind_mounts = overlay.GetBindMounts()
   else:
     bind_mounts = collections.OrderedDict()
-    bind_mounts[_SOURCE_MOUNT_POINT] = BindMount(source_dir, False)
+    bind_mounts[_SOURCE_MOUNT_POINT] = BindMount(source_dir, False, False)
 
   if out_dir:
-    bind_mounts[_OUT_MOUNT_POINT] = BindMount(out_dir, False)
+    bind_mounts[_OUT_MOUNT_POINT] = BindMount(out_dir, False, False)
 
   if dist_dir:
-    bind_mounts[_DIST_MOUNT_POINT] = BindMount(dist_dir, False)
+    bind_mounts[_DIST_MOUNT_POINT] = BindMount(dist_dir, False, False)
     nsjail_command.extend([
         '--env', 'DIST_DIR=%s'%_DIST_MOUNT_POINT
     ])
 
   if meta_root_dir:
-    bind_mounts[_META_MOUNT_POINT] = BindMount(meta_root_dir, False)
-    bind_mounts[os.path.join(_META_MOUNT_POINT, meta_android_dir)] = BindMount(source_dir, False)
+    bind_mounts[_META_MOUNT_POINT] = BindMount(meta_root_dir, False, False)
+    bind_mounts[os.path.join(_META_MOUNT_POINT, meta_android_dir)] = BindMount(source_dir, False, False)
     if out_dir:
-      bind_mounts[os.path.join(_META_MOUNT_POINT, meta_android_dir, 'out')] = BindMount(out_dir, False)
+      bind_mounts[os.path.join(_META_MOUNT_POINT, meta_android_dir, 'out')] = BindMount(out_dir, False, False)
 
   for bind_destination, bind_mount in bind_mounts.items():
     if bind_mount.readonly:
