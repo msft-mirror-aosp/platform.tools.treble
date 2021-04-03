@@ -29,7 +29,8 @@ import tempfile
 import xml.etree.ElementTree as ET
 from . import config
 
-BindMount = collections.namedtuple('BindMount', ['source_dir', 'readonly'])
+BindMount = collections.namedtuple(
+    'BindMount', ['source_dir', 'readonly', 'allows_replacement'])
 
 
 class BindOverlay(object):
@@ -58,11 +59,14 @@ class BindOverlay(object):
       path: A string path to be checked.
 
     Returns:
-      A string of the conflicting path in the bind mounts.
-      None if there was no conflict found.
+      A tuple containing a string of the conflicting path in the bind mounts and
+      whether or not to allow this path to supersede any conflicts.
+      None, False if there was no conflict found.
     """
     conflict_path = None
+    allows_replacement = False
     for bind_destination, bind_mount in self._bind_mounts.items():
+      allows_replacement = bind_mount.allows_replacement
       # Check if the path is a subdir or the bind destination
       if path == bind_destination:
         conflict_path = bind_mount.source_dir
@@ -76,10 +80,12 @@ class BindOverlay(object):
           conflict_path = path_in_source
           break
 
-    return conflict_path
+    return conflict_path, allows_replacement
 
-  def _AddOverlay(self, source_dir, overlay_dir, intermediate_work_dir, skip_subdirs,
-                  allowed_projects, destination_dir, allowed_read_write, contains_read_write):
+  def _AddOverlay(self, source_dir, overlay_dir, intermediate_work_dir,
+                  skip_subdirs, allowed_projects, destination_dir,
+                  allowed_read_write, contains_read_write,
+                  is_replacement_allowed):
     """Adds a single overlay directory.
 
     Args:
@@ -96,6 +102,8 @@ class BindOverlay(object):
         be allowed read/write access.
       contains_read_write: A function returns true if the path input contains
         a sub-path that should be allowed read/write access.
+      is_replacement_allowed: A function returns true if the path can replace a
+        subsequent path.
     """
     # Traverse the overlay directory twice
     # The first pass only process git projects
@@ -123,10 +131,11 @@ class BindOverlay(object):
 
         if '.bindmount' in files or (not allowed_projects or
             os.path.relpath(current_dir_origin, source_dir) in allowed_projects):
-          if allowed_read_write(current_dir_origin):
-            self._AddBindMount(current_dir_origin, current_dir_destination, False)
-          else:
-            self._AddBindMount(current_dir_origin, current_dir_destination, True)
+            self._AddBindMount(
+                current_dir_origin, current_dir_destination,
+                False if allowed_read_write(current_dir_origin) else True,
+                is_replacement_allowed(
+                    os.path.basename(overlay_dir), current_dir_relative))
 
         current_dir_ancestor = current_dir_origin
         while current_dir_ancestor and current_dir_ancestor not in dirs_with_git_projects:
@@ -233,7 +242,7 @@ class BindOverlay(object):
 
   def _AddOverlays(self, source_dir, overlay_dirs, destination_dir,
                    skip_subdirs, allowed_projects, allowed_read_write,
-                   contains_read_write):
+                   contains_read_write, is_replacement_allowed):
     """Add the selected overlay directories.
 
     Args:
@@ -249,6 +258,8 @@ class BindOverlay(object):
         be allowed read/write access.
       contains_read_write: A function returns true if the path input contains
         a sub-path that should be allowed read/write access.
+      is_replacement_allowed: A function returns true if the path can replace a
+        subsequent path.
     """
 
     # Create empty intermediate workdir
@@ -263,7 +274,8 @@ class BindOverlay(object):
     # depth first traversal algorithm.
     #
     # The algorithm described works under the condition that the overlaid file
-    # systems do not have conflicting projects.
+    # systems do not have conflicting projects or that the conflict path is
+    # specifically called-out as a replacement path.
     #
     # The results of attempting to overlay two git projects on top
     # of each other are unpredictable and may push the limits of bind mounts.
@@ -272,11 +284,16 @@ class BindOverlay(object):
 
     for overlay_dir in overlay_dirs:
       self._AddOverlay(source_dir, overlay_dir, intermediate_work_dir,
-                       skip_subdirs, allowed_projects,
-                       destination_dir, allowed_read_write, contains_read_write)
+                       skip_subdirs, allowed_projects, destination_dir,
+                       allowed_read_write, contains_read_write,
+                       is_replacement_allowed)
 
 
-  def _AddBindMount(self, source_dir, destination_dir, readonly=False):
+  def _AddBindMount(self,
+                    source_dir,
+                    destination_dir,
+                    readonly=False,
+                    allows_replacement=False):
     """Adds a bind mount for the specified directory.
 
     Args:
@@ -287,18 +304,21 @@ class BindOverlay(object):
         it will be created.
       readonly: A flag to indicate whether this path should be bind mounted
         with read-only access.
+      allow_replacement: A flag to indicate whether this path is allowed to replace a
+        conflicting path.
     """
-    conflict_path = self._FindBindMountConflict(destination_dir)
-    if conflict_path:
+    conflict_path, replacement = self._FindBindMountConflict(destination_dir)
+    if conflict_path and not replacement:
       raise ValueError("Project %s could not be overlaid at %s "
         "because it conflicts with %s"
         % (source_dir, destination_dir, conflict_path))
-
-    if len(self._bind_mounts) >= self.MAX_BIND_MOUNTS:
-      raise ValueError("Bind mount limit of %s reached" % self.MAX_BIND_MOUNTS)
-
-    self._bind_mounts[destination_dir] = BindMount(
-        source_dir=source_dir, readonly=readonly)
+    elif not conflict_path:
+      if len(self._bind_mounts) >= self.MAX_BIND_MOUNTS:
+        raise ValueError("Bind mount limit of %s reached" % self.MAX_BIND_MOUNTS)
+      self._bind_mounts[destination_dir] = BindMount(
+          source_dir=source_dir,
+          readonly=readonly,
+          allows_replacement=allows_replacement)
 
   def _CopyFile(self, source_path, dest_path):
     """Copies a file to the specified destination.
@@ -395,6 +415,24 @@ class BindOverlay(object):
       paths.add(child.attrib.get("path", child.attrib["name"]))
     return paths
 
+  def _IsReplacementAllowedFunction(self, build_config):
+    """Returns a function to determin if a given path is replaceable.
+
+    Args:
+      build_config: A config.BuildConfig instance of the build target to be
+                    prepared.
+
+    Returns:
+      A function that takes an overlay name and string path as input and
+      returns True if the path is replaceable.
+    """
+    def is_replacement_allowed_func(overlay_name, path):
+      for overlay in build_config.overlays:
+        if overlay_name == overlay.name and path in overlay.replacement_paths:
+          return True
+      return False
+
+    return is_replacement_allowed_func
 
   def __init__(self,
                build_target,
@@ -434,15 +472,17 @@ class BindOverlay(object):
     allowed_read_write = self._GetReadWriteFunction(build_config, source_dir)
     contains_read_write = self._GetContainsReadWriteFunction(build_config, source_dir)
     allowed_projects = self._GetAllowedProjects(build_config)
+    is_replacement_allowed = self._IsReplacementAllowedFunction(build_config)
 
     overlay_dirs = []
-    for overlay_dir in build_config.overlays:
-      overlay_dir = os.path.join(source_dir, 'overlays', overlay_dir)
+    for overlay in build_config.overlays:
+      overlay_dir = os.path.join(source_dir, 'overlays', overlay.name)
       overlay_dirs.append(overlay_dir)
 
     self._AddOverlays(
         source_dir, overlay_dirs, destination_dir,
-        skip_subdirs, allowed_projects, allowed_read_write, contains_read_write)
+        skip_subdirs, allowed_projects, allowed_read_write, contains_read_write,
+        is_replacement_allowed)
 
     # If specified for this target, create a custom filesystem view
     for path_relative_from, path_relative_to in build_config.views:
