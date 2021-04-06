@@ -477,7 +477,10 @@ class Config:
       A dict of keyed by target name. Each value in the dict is a list of
       overlay names corresponding to the target.
     """
-    return {b.name : b.overlays.name for b in self._build_config_map.values()}
+    return {
+        b.name : [o.name for o in b.overlays
+                 ] for b in self._build_config_map.values()
+    }
 
 
   def get_fs_view_map(self):
