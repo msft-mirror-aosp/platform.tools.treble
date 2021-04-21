@@ -20,6 +20,14 @@ import manifest_diff
 
 class ManifestDiffTest(unittest.TestCase):
 
+  def _assertEqualCanonical(self, change1, change2):
+    def _canonicalize(change):
+      return {
+          identifier : ' '.join(sorted(value.split(' ')))
+          for identifier, value in change.items()
+      }
+    return self.assertEqual(_canonicalize(change1), _canonicalize(change2))
+
   def test_project_changes(self):
     p1 = ET.fromstring("""<project attr1="hello">
       <linkfile src="newfile2" dest="notneeded" />
@@ -35,7 +43,7 @@ class ManifestDiffTest(unittest.TestCase):
     """)
     changes = manifest_diff.project_changes(p1, p2, set())
     self.assertEqual(changes.linkfiles.added, {})
-    self.assertEqual(
+    self._assertEqualCanonical(
         changes.linkfiles.removed,
         {'notneeded': '<linkfile src="newfile2" dest="notneeded" />'})
     self.assertEqual(
@@ -45,7 +53,7 @@ class ManifestDiffTest(unittest.TestCase):
                     'src': manifest_diff.Change('oldfile1', 'newfile1')
                 })
         })
-    self.assertEqual(
+    self._assertEqualCanonical(
         changes.copyfiles.added,
         {'addedfile': '<copyfile src="somefile" dest="addedfile" />'})
     self.assertEqual(changes.copyfiles.removed, {})
@@ -83,7 +91,7 @@ class ManifestDiffTest(unittest.TestCase):
     """)
     changes = manifest_diff.compare_single_node_elements(m1, m2, set())
     self.assertEqual(changes.added, {})
-    self.assertEqual(changes.removed, {'repo-hooks': '<repo-hooks />'})
+    self._assertEqualCanonical(changes.removed, {'repo-hooks': '<repo-hooks />'})
     self.assertEqual(
         changes.modified, {
             'default':
@@ -109,7 +117,7 @@ class ManifestDiffTest(unittest.TestCase):
     """)
     changes = manifest_diff.compare_remote_elements(m1, m2, set())
     self.assertEqual(changes.added, {})
-    self.assertEqual(
+    self._assertEqualCanonical(
         changes.removed, {
             'aosp':
                 '<remote revision="dev" name="aosp" fetch="https://aosp-source.com" />'
@@ -135,12 +143,12 @@ class ManifestDiffTest(unittest.TestCase):
       <project name="platform/project4" path="system/project4" />
     </manifest>""")
     changes = manifest_diff.compare_project_elements(m1, m2, set())
-    self.assertEqual(
+    self._assertEqualCanonical(
         changes.added, {
             'system/project4':
                 '<project name="platform/project4" path="system/project4" />'
         })
-    self.assertEqual(
+    self._assertEqualCanonical(
         changes.removed, {
             'system/project3':
                 '<project name="platform/project3" path="system/project3" />'
