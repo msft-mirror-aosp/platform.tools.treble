@@ -619,7 +619,7 @@ def main(argv):
   repo_list_file = None
   ninja_build_file = None
   module_info_file = None
-  ninja_binary = "ninja"
+  ninja_binary = "prebuilts/build-tools/linux-x86/bin/ninja"
   kati_stamp_file = None
   overlays = []
   installed_prebuilts = []
