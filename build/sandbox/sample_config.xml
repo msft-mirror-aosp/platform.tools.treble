@@ -10,8 +10,8 @@ Defines sample build configuration file.
     <goal name="droid"/>
     <build_config>
       <!-- build_config name will inherit the name aosp_cf_x86_phone_default
-           and append dist to the goal list. -->
-      <goal name="dist"/>
+           and append dist to the flag list. -->
+      <flag name="dist"/>
     </build_config>
     <build_config name="aosp_cf_x86_phone_no_dist" tags="skip">
     </build_config>
@@ -26,7 +26,7 @@ Defines sample build configuration file.
     <!-- If android_target isn't provided target will use name as default
          android_target. -->
     <goal name="droid"/>
-    <goal name="dist"/>
+    <flag name="dist"/>
     <build_config>
       <!-- build_config will inherit the name and android_target: 
            aosp_car_arm64. -->
