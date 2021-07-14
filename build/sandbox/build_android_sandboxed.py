@@ -34,7 +34,7 @@ def build(build_target,
           config_file=None,
           command_wrapper=_DEFAULT_COMMAND_WRAPPER,
           use_rbe=False,
-          readonly_bind_mount=None,
+          readonly_bind_mounts=[],
           env=[]):
   """Builds an Android target in a secure sandbox.
 
@@ -51,7 +51,7 @@ def build(build_target,
     config_file: A string path to an overlay configuration file.
     command_wrapper: A string path to the command wrapper.
     use_rbe: If true, will attempt to use RBE for the build.
-    readonly_bind_mount: A string path to a path to be mounted as read-only.
+    readonly_bind_mounts: A list of string paths to be mounted as read-only.
     env: An array of environment variables to define in the NsJail sandbox in
       the `var=val` syntax.
 
@@ -78,10 +78,6 @@ def build(build_target,
       'make',
       '-j',
   ] + build_goals
-
-  readonly_bind_mounts = []
-  if readonly_bind_mount:
-    readonly_bind_mounts = [readonly_bind_mount]
 
   extra_nsjail_args = []
   cleanup = lambda: None
@@ -140,8 +136,11 @@ def arg_parser():
       'Defaults to \'%s\'.' % _DEFAULT_COMMAND_WRAPPER)
   parser.add_argument(
       '--readonly_bind_mount',
+      type=str,
+      default=[],
+      action='append',
       help='Path to the a path to be mounted as readonly inside the secure '
-      'build sandbox.')
+      'build sandbox. Can be specified multiple times')
   parser.add_argument(
       '--env',
       '-e',
@@ -205,7 +204,7 @@ def main():
       chroot=args['chroot'],
       config_file=args['config_file'],
       command_wrapper=args['command_wrapper'],
-      readonly_bind_mount=args['readonly_bind_mount'],
+      readonly_bind_mounts=args['readonly_bind_mount'],
       env=args['env'],
       dist_dir=args['dist_dir'],
       build_id=args['build_id'],
