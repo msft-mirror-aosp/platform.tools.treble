@@ -84,6 +84,7 @@ def main():
     copy_kernel_file(kernel_dir, 'System.map')
     copy_kernel_file(kernel_dir, 'abi.xml')
     copy_kernel_file(kernel_dir, 'abi_symbollist')
+    copy_kernel_file(kernel_dir, 'vmlinux')
     copy_kernel_file(kernel_dir, 'Image',
                      'kernel-{}'.format(args.kernel_version))
     copy_kernel_file(kernel_dir, 'Image.lz4',
