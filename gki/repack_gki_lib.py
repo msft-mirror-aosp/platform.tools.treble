@@ -29,7 +29,7 @@ def fetch_kernel(client, out_dir, build_id, kernel_target, kernel_debug_target):
       client=client,
       build_id=build_id,
       target=kernel_target,
-      pattern=r'(Image|Image.lz4|System\.map|abi.xml|abi_symbollist)',
+      pattern=r'(Image|Image.lz4|System\.map|abi.xml|abi_symbollist|vmlinux)',
       out_dir=kernel_dir)
   fetcher_lib.fetch_artifacts(
       client=client,
