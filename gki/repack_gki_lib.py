@@ -13,7 +13,7 @@ def fetch_bootimg(client, out_dir, build_id, kernel_version, target):
       client=client,
       build_id=build_id,
       target=target,
-      pattern=r'(.*-img-.*\.zip|.*-target_files-.*\.zip|boot-debug-{version}.*\.img|boot-test-harness-{version}.*\.img|otatools.zip)'
+      pattern=r'(gsi_.*-img-.*\.zip|gsi_.*-target_files-.*\.zip|boot-debug-{version}.*\.img|boot-test-harness-{version}.*\.img|otatools.zip)'
       .format(version=kernel_version),
       out_dir=out_dir)
 
