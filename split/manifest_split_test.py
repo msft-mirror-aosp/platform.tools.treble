@@ -14,12 +14,12 @@
 """Test manifest split."""
 
 import json
-import mock
 import os
 import re
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 import xml.etree.ElementTree as ET
 
 import manifest_split
@@ -167,7 +167,7 @@ class ManifestSplitTest(unittest.TestCase):
                                   'Unknown module path for module target1'):
         manifest_split.ModuleInfo(module_info_file.name, repo_projects)
 
-  @mock.patch.object(subprocess, 'check_output', autospec=True)
+  @unittest.mock.patch.object(subprocess, 'check_output', autospec=True)
   def test_get_ninja_inputs(self, mock_check_output):
     mock_check_output.return_value = b"""
     path/to/input1
@@ -179,7 +179,7 @@ class ManifestSplitTest(unittest.TestCase):
     inputs = manifest_split.get_ninja_inputs('unused', 'unused', ['droid'])
     self.assertEqual(inputs, {'path/to/input1', 'path/to/input2'})
 
-  @mock.patch.object(subprocess, 'check_output', autospec=True)
+  @unittest.mock.patch.object(subprocess, 'check_output', autospec=True)
   def test_get_ninja_inputs_includes_test_mapping(self, mock_check_output):
     mock_check_output.return_value = b"""
     path/to/input1
@@ -192,7 +192,7 @@ class ManifestSplitTest(unittest.TestCase):
     self.assertEqual(
         inputs, {'path/to/input1', 'path/to/input2', 'path/to/TEST_MAPPING'})
 
-  @mock.patch.object(subprocess, 'check_output', autospec=True)
+  @unittest.mock.patch.object(subprocess, 'check_output', autospec=True)
   def test_get_kati_makefiles(self, mock_check_output):
     with tempfile.TemporaryDirectory() as temp_dir:
       os.chdir(temp_dir)
@@ -291,7 +291,7 @@ class ManifestSplitTest(unittest.TestCase):
         ET.tostring(projects[0]).strip().decode(),
         '<project name="platform/project1" path="system/project1" />')
 
-  @mock.patch.object(subprocess, 'check_output', autospec=True)
+  @unittest.mock.patch.object(subprocess, 'check_output', autospec=True)
   def test_create_split_manifest(self, mock_check_output):
     with tempfile.NamedTemporaryFile('w+t') as repo_list_file, \
       tempfile.NamedTemporaryFile('w+t') as manifest_file, \
@@ -444,9 +444,9 @@ class ManifestSplitTest(unittest.TestCase):
         self.assertEqual(debug_data['vendor/project1']['kati_makefiles'][0],
                          product_makefile)
 
-  @mock.patch.object(manifest_split, 'get_ninja_inputs', autospec=True)
-  @mock.patch.object(manifest_split, 'get_kati_makefiles', autospec=True)
-  @mock.patch.object(manifest_split.ModuleInfo, '__init__', autospec=True)
+  @unittest.mock.patch.object(manifest_split, 'get_ninja_inputs', autospec=True)
+  @unittest.mock.patch.object(manifest_split, 'get_kati_makefiles', autospec=True)
+  @unittest.mock.patch.object(manifest_split.ModuleInfo, '__init__', autospec=True)
   def test_create_split_manifest_skip_kati_module_info(self, mock_init,
                                                        mock_get_kati_makefiles,
                                                        mock_get_ninja_inputs):
@@ -483,7 +483,7 @@ class ManifestSplitTest(unittest.TestCase):
     mock_get_kati_makefiles.assert_not_called()
     mock_init.assert_not_called()
 
-  @mock.patch.object(subprocess, 'check_output', autospec=True)
+  @unittest.mock.patch.object(subprocess, 'check_output', autospec=True)
   def test_create_split_manifest_installed_prebuilt(self, mock_check_output):
 
     # The purpose of this test is to verify that create_split_manifests treats
