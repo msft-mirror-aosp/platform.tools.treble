@@ -64,7 +64,7 @@ cd "$BUILD_DIR"
 set +e
 
 echo "build_android_target.sh: $BUILD_COMMAND"
-$BUILD_COMMAND
+eval $BUILD_COMMAND
 BUILD_COMMAND_EXIT_VALUE=$?
 
 # Collect RBE metrics if enabled
