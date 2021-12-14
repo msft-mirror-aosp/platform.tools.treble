@@ -82,7 +82,6 @@ def main():
           os.path.join(in_dir, filename), os.path.join(kernel_out_dir, outname))
 
     copy_kernel_file(kernel_dir, 'System.map')
-    copy_kernel_file(kernel_dir, 'abi.xml')
     copy_kernel_file(kernel_dir, 'abi_symbollist')
     copy_kernel_file(kernel_dir, 'vmlinux')
     copy_kernel_file(kernel_dir, 'Image',
@@ -92,6 +91,8 @@ def main():
     copy_kernel_file(kernel_dir, 'Image.gz',
                      'kernel-{}-gz'.format(args.kernel_version))
     copy_kernel_file(kernel_debug_dir, 'System.map', 'System.map-allsyms')
+    copy_kernel_file(kernel_debug_dir, 'abi-generated.xml')
+    copy_kernel_file(kernel_debug_dir, 'abi-full-generated.xml')
     copy_kernel_file(kernel_debug_dir, 'Image',
                      'kernel-{}-allsyms'.format(args.kernel_version))
     copy_kernel_file(kernel_debug_dir, 'Image.lz4',
@@ -113,14 +114,16 @@ def main():
     shutil.copy(img_zip_path, args.out_dir)
 
     # Replace kernels within the target_files.zip and save to the out dir.
-    target_files_zip_name = [
-        f for f in os.listdir(tmp_bootimg_dir) if '-target_files-' in f
-    ][0]
-    target_files_zip_path = os.path.join(tmp_bootimg_dir, target_files_zip_name)
-    repack_gki_lib.replace_target_files_zip_kernels(target_files_zip_path,
-                                                    kernel_out_dir,
-                                                    args.kernel_version)
-    shutil.copy(target_files_zip_path, args.out_dir)
+    # TODO(b/209035444): GSI target_files does not yet include a 5.15 boot.img.
+    if args.kernel_version != '5.15':
+      target_files_zip_name = [
+          f for f in os.listdir(tmp_bootimg_dir) if '-target_files-' in f
+      ][0]
+      target_files_zip_path = os.path.join(tmp_bootimg_dir, target_files_zip_name)
+      repack_gki_lib.replace_target_files_zip_kernels(target_files_zip_path,
+                                                      kernel_out_dir,
+                                                      args.kernel_version)
+      shutil.copy(target_files_zip_path, args.out_dir)
 
     # Copy otatools.zip from the ramdisk build, used for GKI signing.
     shutil.copy(os.path.join(tmp_bootimg_dir, 'otatools.zip'), args.out_dir)
