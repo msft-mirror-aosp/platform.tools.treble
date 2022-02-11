@@ -121,8 +121,9 @@ class ManifestSplitTest(unittest.TestCase):
           'system/project4': 'platform/project4',
           'vendor/google/project3': 'vendor/project3',
       }
+      ignore_paths = set(['out/'])
       module_info = manifest_split.ModuleInfo(module_info_file.name,
-                                              repo_projects)
+                                              repo_projects, ignore_paths)
       self.assertEqual(
           module_info.project_modules, {
               'platform/project1': set(['target1a', 'target1b']),
@@ -163,9 +164,11 @@ class ManifestSplitTest(unittest.TestCase):
       }""")
       module_info_file.flush()
       repo_projects = {}
+      ignore_paths = set()
       with self.assertRaisesRegex(ValueError,
                                   'Unknown module path for module target1'):
-        manifest_split.ModuleInfo(module_info_file.name, repo_projects)
+        manifest_split.ModuleInfo(module_info_file.name, repo_projects,
+                                  ignore_paths)
 
   @unittest.mock.patch.object(subprocess, 'check_output', autospec=True)
   def test_get_ninja_inputs(self, mock_check_output):
