@@ -5,7 +5,7 @@
 
 set -e
 
-while getopts ":t:d:v:b:m:r:" option ; do
+while getopts ":t:d:v:b:m:" option ; do
   case "${option}" in
     t) TARGET=${OPTARG} ;;
     d) DIST_DIR=${OPTARG} ;;
@@ -13,7 +13,6 @@ while getopts ":t:d:v:b:m:r:" option ; do
     b) BUILD_ID=${OPTARG} ;;
     # TODO(b/170638547) Remove the need for merge configs.
     m) MERGE_CONFIG_DIR=${OPTARG} ;;
-    r) HAS_RADIO_IMG=${OPTARG} ;;
     *) echo "Unexpected argument: -${OPTARG}" >&2 ;;
   esac
 done
@@ -37,9 +36,6 @@ fi
 if [[ -z "${MERGE_CONFIG_DIR}" ]]; then
   echo "error: -m merge config dir argument not set"
   exit 1
-fi
-if [[ -z "${HAS_RADIO_IMG}" ]]; then
-  HAS_RADIO_IMG="true"
 fi
 
 # Move the system-only build artifacts to a separate folder
@@ -65,11 +61,7 @@ out/host/linux-x86/bin/merge_target_files \
 
 # Copy bootloader.img, radio.img, and android-info.txt, needed for flashing.
 cp ${VENDOR_DIR}/bootloader.img ${DIST_DIR}/bootloader.img
-# Copy radio.img unless arg is "false" (eg. Android TV targets)
-if [[ $HAS_RADIO_IMG = "true" ]]; then
-  cp ${VENDOR_DIR}/radio.img ${DIST_DIR}/radio.img
-fi
-
+cp ${VENDOR_DIR}/radio.img ${DIST_DIR}/radio.img
 unzip -j -d ${DIST_DIR} \
   ${VENDOR_DIR}/*-target_files-*.zip \
   OTA/android-info.txt
