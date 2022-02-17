@@ -70,6 +70,11 @@ if [[ $HAS_RADIO_IMG = "true" ]]; then
   cp ${VENDOR_DIR}/radio.img ${DIST_DIR}/radio.img
 fi
 
+# Copy vendor otatools.zip, needed by sign_target_files_apks
+if [[ -f "${VENDOR_DIR}/otatools.zip" ]]; then
+  cp ${VENDOR_DIR}/otatools.zip ${DIST_DIR}/otatools_vendor.zip
+fi
+
 unzip -j -d ${DIST_DIR} \
   ${VENDOR_DIR}/*-target_files-*.zip \
   OTA/android-info.txt
