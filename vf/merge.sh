@@ -11,7 +11,6 @@ while getopts ":t:d:v:b:m:r:" option ; do
     d) DIST_DIR=${OPTARG} ;;
     v) VENDOR_DIR=${OPTARG} ;;
     b) BUILD_ID=${OPTARG} ;;
-    # TODO(b/170638547) Remove the need for merge configs.
     m) MERGE_CONFIG_DIR=${OPTARG} ;;
     r) HAS_RADIO_IMG=${OPTARG} ;;
     *) echo "Unexpected argument: -${OPTARG}" >&2 ;;
@@ -34,10 +33,6 @@ if [[ -z "${BUILD_ID}" ]]; then
   echo "error: -b build id argument not set"
   exit 1
 fi
-if [[ -z "${MERGE_CONFIG_DIR}" ]]; then
-  echo "error: -m merge config dir argument not set"
-  exit 1
-fi
 if [[ -z "${HAS_RADIO_IMG}" ]]; then
   HAS_RADIO_IMG="true"
 fi
@@ -52,16 +47,20 @@ mv -f ${DIST_DIR}/${TARGET}-*.zip ${SYSTEM_DIR}
 source build/envsetup.sh
 lunch ${TARGET}-userdebug
 
+EXTRA_FLAGS=""
+if [[ "${MERGE_CONFIG_DIR}" ]]; then
+  EXTRA_FLAGS+=" --framework-item-list ${MERGE_CONFIG_DIR}/framework_item_list.txt \
+  --framework-misc-info-keys ${MERGE_CONFIG_DIR}/framework_misc_info_keys.txt \
+  --vendor-item-list ${MERGE_CONFIG_DIR}/vendor_item_list.txt"
+fi
 out/host/linux-x86/bin/merge_target_files \
   --framework-target-files ${SYSTEM_DIR}/${TARGET}-target_files*.zip \
   --vendor-target-files ${VENDOR_DIR}/*-target_files-*.zip \
-  --framework-item-list ${MERGE_CONFIG_DIR}/framework_item_list.txt \
-  --framework-misc-info-keys ${MERGE_CONFIG_DIR}/framework_misc_info_keys.txt \
-  --vendor-item-list ${MERGE_CONFIG_DIR}/vendor_item_list.txt \
   --allow-duplicate-apkapex-keys \
   --output-target-files ${DIST_DIR}/${TARGET}-target_files-${BUILD_ID}.zip \
   --output-img  ${DIST_DIR}/${TARGET}-img-${BUILD_ID}.zip \
-  --output-ota  ${DIST_DIR}/${TARGET}-ota-${BUILD_ID}.zip
+  --output-ota  ${DIST_DIR}/${TARGET}-ota-${BUILD_ID}.zip \
+  ${EXTRA_FLAGS}
 
 # Copy bootloader.img, radio.img, and android-info.txt, needed for flashing.
 cp ${VENDOR_DIR}/bootloader.img ${DIST_DIR}/bootloader.img
