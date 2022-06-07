@@ -29,13 +29,13 @@ def fetch_kernel(client, out_dir, build_id, kernel_target, kernel_debug_target):
       client=client,
       build_id=build_id,
       target=kernel_target,
-      pattern=r'(Image|Image.lz4|System\.map|abi_symbollist|vmlinux)',
+      pattern=r'(Image|Image.lz4|System\.map|abi_symbollist|vmlinux|vmlinux.symvers)',
       out_dir=kernel_dir)
   fetcher_lib.fetch_artifacts(
       client=client,
       build_id=build_id,
       target=kernel_debug_target,
-      pattern=r'(Image|Image.lz4|System\.map|abi-generated.xml|abi-full-generated.xml)',
+      pattern=r'(Image|Image.lz4|System\.map|abi-generated.xml|abi-full-generated.xml|vmlinux|vymlinx.symvers)',
       out_dir=kernel_debug_dir)
 
   print('Compressing kernels')
