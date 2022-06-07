@@ -88,6 +88,7 @@ def main():
     copy_kernel_file(kernel_dir, 'System.map')
     copy_kernel_file(kernel_dir, 'abi_symbollist')
     copy_kernel_file(kernel_dir, 'vmlinux')
+    copy_kernel_file(kernel_dir, 'vmlinux.symvers')
     copy_kernel_file(kernel_dir, 'Image',
                      'kernel-{}'.format(args.kernel_version))
     copy_kernel_file(kernel_dir, 'Image.lz4',
@@ -103,6 +104,8 @@ def main():
                      'kernel-{}-lz4-allsyms'.format(args.kernel_version))
     copy_kernel_file(kernel_debug_dir, 'Image.gz',
                      'kernel-{}-gz-allsyms'.format(args.kernel_version))
+    copy_kernel_file(kernel_debug_dir, 'vmlinux', 'vmlinux-allsyms')
+    copy_kernel_file(kernel_debug_dir, 'vmlinux.symvers', 'vmlinux.symvers-allsyms')
 
     # Repack individual boot images using the fetched kernel artifacts,
     # then save to the out dir.
