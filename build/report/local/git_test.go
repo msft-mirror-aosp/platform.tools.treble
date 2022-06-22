@@ -29,23 +29,27 @@ type TestCmd struct {
 	text string
 }
 type gitTestCli struct {
-	revParse  *TestCmd
-	remoteUrl *TestCmd
-	tree      *TestCmd
-	commit    *TestCmd
+	revParse   *TestCmd
+	remoteUrl  *TestCmd
+	tree       *TestCmd
+	commit     *TestCmd
+	diffBranch *TestCmd
 }
 
-func (g *gitTestCli) ProjectInfo(ctx context.Context, gitDir string, workDir string) (*bytes.Buffer, error) {
+func (g *gitTestCli) ProjectInfo(ctx context.Context, gitDir, workDir string) (*bytes.Buffer, error) {
 	return bytes.NewBufferString(g.revParse.text), g.revParse.err
 }
-func (g *gitTestCli) RemoteUrl(ctx context.Context, gitDir string, workDir string, remote string) (*bytes.Buffer, error) {
+func (g *gitTestCli) RemoteUrl(ctx context.Context, gitDir, workDir, remote string) (*bytes.Buffer, error) {
 	return bytes.NewBufferString(g.remoteUrl.text), g.remoteUrl.err
 }
-func (g *gitTestCli) Tree(ctx context.Context, gitDir string, workDir string, revision string) (*bytes.Buffer, error) {
+func (g *gitTestCli) Tree(ctx context.Context, gitDir, workDir, revision string) (*bytes.Buffer, error) {
 	return bytes.NewBufferString(g.tree.text), g.tree.err
 }
-func (g *gitTestCli) CommitInfo(ctx context.Context, gitDir string, workDir string, sha string) (*bytes.Buffer, error) {
+func (g *gitTestCli) CommitInfo(ctx context.Context, gitDir, workDir, sha string) (*bytes.Buffer, error) {
 	return bytes.NewBufferString(g.commit.text), g.tree.err
+}
+func (g *gitTestCli) DiffBranches(ctx context.Context, gitDir, workDir, upstream, sha string) (*bytes.Buffer, error) {
+	return bytes.NewBufferString(g.diffBranch.text), g.tree.err
 }
 
 func Test_git(t *testing.T) {
@@ -82,12 +86,14 @@ func Test_git(t *testing.T) {
 				revCmd:    &TestCmd{text: "/abs/path/to/work/dir\nsha_revision\n", err: nil},
 				remoteCmd: &TestCmd{text: "http://url/workdir", err: nil},
 				treeCmd:   &TestCmd{text: "", err: nil},
-				res: &app.GitProject{WorkDir: "/abs/path/to/work/dir",
+				res: &app.GitProject{
+					RepoDir:   "work/dir",
+					WorkDir:   "/abs/path/to/work/dir",
 					GitDir:    ".git",
 					Remote:    "origin",
 					RemoteUrl: "http://url/workdir",
 					Revision:  "sha_revision",
-					Files:     []app.GitTreeObj{}},
+					Files:     make(map[string]*app.GitTreeObj)},
 			},
 			// Test empty commit
 			commit: commitTest{
@@ -106,12 +112,14 @@ func Test_git(t *testing.T) {
 				revCmd:    &TestCmd{text: "/abs/path/to/work/dir\nsha_revision\n", err: nil},
 				remoteCmd: &TestCmd{text: "http://url/workdir", err: nil},
 				treeCmd:   &TestCmd{text: "100644 blob 0000000000000000000000000000000000000001 file.1\n", err: nil},
-				res: &app.GitProject{WorkDir: "/abs/path/to/work/dir",
+				res: &app.GitProject{
+					RepoDir:   "work/dir",
+					WorkDir:   "/abs/path/to/work/dir",
 					GitDir:    ".git",
 					Remote:    "origin",
 					RemoteUrl: "http://url/workdir",
 					Revision:  "sha_revision",
-					Files: []app.GitTreeObj{{Permissions: "100644", Type: "blob",
+					Files: map[string]*app.GitTreeObj{"file.1": &app.GitTreeObj{Permissions: "100644", Type: "blob",
 						Sha: "0000000000000000000000000000000000000001", Filename: "file.1"}}},
 			},
 			commit: commitTest{
@@ -136,9 +144,12 @@ func Test_git(t *testing.T) {
 			commit:    test.commit.cmd,
 		}}
 
-		proj, err := git.Project(nil, test.path, test.gitDir, test.remote, test.revision, test.getFiles)
+		proj, err := git.Project(nil, test.path, test.gitDir, test.remote, test.revision)
 		if err != nil {
 			t.Fatal("Failed to parse project")
+		}
+		if test.getFiles {
+			_ = git.PopulateFiles(nil, proj, "")
 		}
 		if !reflect.DeepEqual(*proj, *test.project.res) {
 			t.Errorf("Project = %+v; want %+v", *proj, *test.project.res)
