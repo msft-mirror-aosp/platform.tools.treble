@@ -35,6 +35,7 @@ type reportTest struct {
 	projects   map[string]*app.GitProject
 	commits    map[*app.GitProject]map[string]*app.GitCommit
 
+	deps           *app.BuildDeps
 	projectCommits map[string]int
 }
 
@@ -81,7 +82,10 @@ func (r *reportTest) Paths(ctx context.Context, target string, dependency string
 	return r.multipaths[target][dependency], nil
 }
 
-func (r *reportTest) Project(ctx context.Context, path string, gitDir string, remote string, revision string, getFiles bool) (*app.GitProject, error) {
+func (r *reportTest) Deps(ctx context.Context) (*app.BuildDeps, error) {
+	return r.deps, nil
+}
+func (r *reportTest) Project(ctx context.Context, path string, gitDir string, remote string, revision string) (*app.GitProject, error) {
 	var err error
 	out := r.projects[path]
 	if out == nil {
@@ -89,7 +93,9 @@ func (r *reportTest) Project(ctx context.Context, path string, gitDir string, re
 	}
 	return out, err
 }
-
+func (r *reportTest) PopulateFiles(ctx context.Context, proj *app.GitProject, upstream string) error {
+	return nil
+}
 func (r *reportTest) CommitInfo(ctx context.Context, proj *app.GitProject, sha string) (*app.GitCommit, error) {
 	var err error
 	out := r.commits[proj][sha]
@@ -113,6 +119,22 @@ func projName(i int) string {
 	return "proj." + strconv.Itoa(i)
 }
 
+func fileName(i int) (filename string, sha string) {
+	iString := strconv.Itoa(i)
+	return "source." + iString, "sha." + iString
+}
+func createFile(i int) *app.GitTreeObj {
+	fname, sha := fileName(i)
+	return &app.GitTreeObj{Permissions: "100644", Type: "blob", Filename: fname, Sha: sha}
+}
+func createProject(name string) *app.GitProject {
+	return &app.GitProject{
+		RepoDir: name, WorkDir: name, GitDir: ".git", Remote: "origin",
+		RemoteUrl: "origin_url", Revision: name + "_sha",
+		Files: make(map[string]*app.GitTreeObj)}
+
+}
+
 // Create basic test data for given inputs
 func createTest(projCount int, fileCount int) *reportTest {
 	test := &reportTest{
@@ -132,14 +154,11 @@ func createTest(projCount int, fileCount int) *reportTest {
 	for i := 0; i <= projCount; i++ {
 		name := projName(i)
 
-		proj := &app.GitProject{
-			WorkDir: name, GitDir: ".git", Remote: "origin",
-			RemoteUrl: "origin_url", Revision: name + "_sha"}
+		proj := createProject(name)
 
 		for i := 0; i <= fileCount; i++ {
-			iString := strconv.Itoa(i)
-			treeObj := app.GitTreeObj{Permissions: "100644", Type: "blob", Filename: "source." + iString, Sha: iString}
-			proj.Files = append(proj.Files, treeObj)
+			treeObj := createFile(i)
+			proj.Files[treeObj.Filename] = treeObj
 
 		}
 		test.projects[name] = proj
@@ -194,14 +213,14 @@ func Test_report(t *testing.T) {
 	var targets []string
 
 	// Build expected output while creating the targets
-	var resTargets []*app.BuildTarget
+	resTargets := make(map[string]*app.BuildTarget)
 
 	for _, target := range targetDefs {
 
 		res := &app.BuildTarget{Name: target.name,
 			Steps:     target.cmds,
 			FileCount: len(target.inputFiles),
-			Projects:  make(map[string]*app.BuildProject),
+			Projects:  make(map[string]*app.GitProject),
 		}
 
 		// Add files to the build target
@@ -209,17 +228,16 @@ func Test_report(t *testing.T) {
 		for _, in := range target.inputFiles {
 			// Get project by name
 			pName := projName(in.proj)
+			bf := createFile(in.file)
 			p := test.projects[pName]
 
-			bf := &app.BuildFile{Name: p.Files[in.file].Filename,
-				Revision: p.Files[in.file].Sha}
 			inputFiles = append(inputFiles,
-				fmt.Sprintf("%s/%s", p.WorkDir, bf.Name))
+				fmt.Sprintf("%s/%s", p.WorkDir, bf.Filename))
 
 			if _, exists := res.Projects[pName]; !exists {
-				res.Projects[pName] = &app.BuildProject{Path: pName, Name: pName, Revision: p.Revision}
+				res.Projects[pName] = createProject(pName)
 			}
-			res.Projects[pName].Files = append(res.Projects[pName].Files, *bf)
+			res.Projects[pName].Files[bf.Filename] = bf
 		}
 
 		// Create test data
@@ -231,17 +249,18 @@ func Test_report(t *testing.T) {
 			Outputs: createStrings("target.out.", target.outputTargets)}
 
 		targets = append(targets, target.name)
-		resTargets = append(resTargets, res)
+		resTargets[res.Name] = res
 	}
 
-	rtx := &Context{RepoBase: "/src", Repo: test, Build: test, Project: test, WorkerCount: 1}
-	req := &app.ReportRequest{ManifestFile: "test_file", Targets: targets}
+	rtx := &Context{RepoBase: "/src", Repo: test, Build: test, Project: test, WorkerCount: 1, BuildWorkerCount: 1}
+	rtx.ResolveProjectMap(nil, "test_file", "")
+	req := &app.ReportRequest{Targets: targets}
 	rsp, err := RunReport(nil, rtx, req)
 	if err != nil {
 		t.Errorf("Failed to run report for request %+v", req)
 	} else {
 		if !reflect.DeepEqual(rsp.Targets, resTargets) {
-			t.Errorf("Target not expected")
+			t.Errorf("Got targets %+v, expected %+v", rsp.Targets, resTargets)
 		}
 	}
 }

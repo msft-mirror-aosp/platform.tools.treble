@@ -16,6 +16,7 @@ package report
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"tools/treble/build/report/app"
@@ -41,24 +42,28 @@ type buildPathData struct {
 //
 // create build target from  using repo data
 //
-func createBuildTarget(ctx context.Context, repo *repo, buildTarget *buildTargetData) *app.BuildTarget {
-
+func createBuildTarget(ctx context.Context, rtx *Context, buildTarget *buildTargetData) *app.BuildTarget {
 	out := &app.BuildTarget{Name: buildTarget.input.Target,
 		Steps:     buildTarget.buildSteps,
-		Projects:  make(map[string]*app.BuildProject),
+		Projects:  make(map[string]*app.GitProject),
 		FileCount: len(buildTarget.input.Files),
 	}
 
-	for i, _ := range buildTarget.input.Files {
-		proj, buildFile := lookupProjectFile(ctx, repo, &buildTarget.input.Files[i])
+	for _, f := range buildTarget.input.Files {
+		proj, buildFile := lookupProjectFile(ctx, rtx, f)
 		if buildFile != nil {
 			if buildProj, exists := out.Projects[proj.Name]; exists {
-				buildProj.Files = append(buildProj.Files, *buildFile)
+				buildProj.Files[buildFile.Filename] = buildFile
 			} else {
 				out.Projects[proj.Name] =
-					&app.BuildProject{Path: proj.RepoPath,
-						Name: proj.Name, Revision: proj.GitProj.Revision,
-						Files: []app.BuildFile{*buildFile}}
+					&app.GitProject{
+						RepoDir:   proj.GitProj.RepoDir,
+						WorkDir:   proj.GitProj.WorkDir,
+						GitDir:    proj.GitProj.GitDir,
+						Remote:    proj.GitProj.Remote,
+						RemoteUrl: proj.GitProj.RemoteUrl,
+						Revision:  proj.GitProj.Revision,
+						Files:     map[string]*app.GitTreeObj{buildFile.Filename: buildFile}}
 			}
 		}
 	}
@@ -70,7 +75,7 @@ func targetResolvers(ctx context.Context, rtx *Context) (chan string, chan *buil
 	var wg sync.WaitGroup
 	inChan := make(chan string)
 	outChan := make(chan *buildTargetData)
-	for i := 0; i < rtx.WorkerCount; i++ {
+	for i := 0; i < rtx.BuildWorkerCount; i++ {
 		wg.Add(1)
 		go func() {
 			for targetName := range inChan {
@@ -80,7 +85,11 @@ func targetResolvers(ctx context.Context, rtx *Context) (chan string, chan *buil
 					buildSteps = len(cmds.Cmds)
 				}
 				input, err := rtx.Build.Input(ctx, targetName)
-				outChan <- &buildTargetData{input: input, buildSteps: buildSteps, error: err != nil}
+				if input == nil {
+					fmt.Printf("Failed to get input %s (%s)\n", targetName, err)
+				} else {
+					outChan <- &buildTargetData{input: input, buildSteps: buildSteps, error: err != nil}
+				}
 			}
 			wg.Done()
 		}()
@@ -95,14 +104,14 @@ func targetResolvers(ctx context.Context, rtx *Context) (chan string, chan *buil
 
 //
 // Setup routines to resolve build input targets to BuildTarget
-func resolveBuildInputs(ctx context.Context, rtx *Context, repo *repo, inChan chan *buildTargetData) chan *app.BuildTarget {
+func resolveBuildInputs(ctx context.Context, rtx *Context, inChan chan *buildTargetData) chan *app.BuildTarget {
 	var wg sync.WaitGroup
 	outChan := make(chan *app.BuildTarget)
-	for i := 0; i < rtx.WorkerCount; i++ {
+	for i := 0; i < rtx.BuildWorkerCount; i++ {
 		wg.Add(1)
 		go func() {
 			for buildTarget := range inChan {
-				outChan <- createBuildTarget(ctx, repo, buildTarget)
+				outChan <- createBuildTarget(ctx, rtx, buildTarget)
 			}
 			wg.Done()
 		}()
@@ -119,7 +128,7 @@ func queryResolvers(ctx context.Context, rtx *Context) (chan string, chan *build
 	var wg sync.WaitGroup
 	inChan := make(chan string)
 	outChan := make(chan *buildSourceData)
-	for i := 0; i < rtx.WorkerCount; i++ {
+	for i := 0; i < rtx.BuildWorkerCount; i++ {
 		wg.Add(1)
 		go func() {
 			for srcName := range inChan {
@@ -137,45 +146,27 @@ func queryResolvers(ctx context.Context, rtx *Context) (chan string, chan *build
 	return inChan, outChan
 }
 
-// Setup routines to resolve path
-func pathResolvers(ctx context.Context, rtx *Context, target string) (chan string, chan *buildPathData) {
-	var wg sync.WaitGroup
-	inChan := make(chan string)
-	outChan := make(chan *buildPathData)
-	for i := 0; i < rtx.WorkerCount; i++ {
-		wg.Add(1)
-		go func() {
-			for dep := range inChan {
-				path, err := rtx.Build.Path(ctx, target, dep)
-				outChan <- &buildPathData{filename: dep, path: path, error: err != nil}
-			}
-			wg.Done()
-		}()
-	}
-	go func() {
-		wg.Wait()
-		close(outChan)
-	}()
-
-	return inChan, outChan
-}
-
 // Setup routines to resolve paths
-func pathsResolvers(ctx context.Context, rtx *Context, target string) (chan string, chan *buildPathData) {
+func pathsResolvers(ctx context.Context, rtx *Context, target string, singlePath bool) (chan string, chan *buildPathData) {
 	var wg sync.WaitGroup
 	inChan := make(chan string)
 	outChan := make(chan *buildPathData)
-	for i := 0; i < rtx.WorkerCount; i++ {
+	for i := 0; i < rtx.BuildWorkerCount; i++ {
 		wg.Add(1)
 		go func() {
 			for dep := range inChan {
-				paths, err := rtx.Build.Paths(ctx, target, dep)
-				if err != nil {
-					outChan <- &buildPathData{filename: dep, path: nil, error: true}
+				if singlePath {
+					path, err := rtx.Build.Path(ctx, target, dep)
+					outChan <- &buildPathData{filename: dep, path: path, error: err != nil}
 				} else {
-					for _, path := range paths {
+					paths, err := rtx.Build.Paths(ctx, target, dep)
+					if err != nil {
+						outChan <- &buildPathData{filename: dep, path: nil, error: true}
+					} else {
+						for _, path := range paths {
 
-						outChan <- &buildPathData{filename: dep, path: path, error: false}
+							outChan <- &buildPathData{filename: dep, path: path, error: false}
+						}
 					}
 				}
 			}
