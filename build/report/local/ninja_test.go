@@ -29,6 +29,7 @@ type ninjaTest struct {
 	query   *TestCmd
 	path    *TestCmd
 	paths   *TestCmd
+	deps    *TestCmd
 	build   *TestCmd
 }
 
@@ -46,6 +47,9 @@ func (n *ninjaTest) Path(ctx context.Context, target string, dependency string) 
 }
 func (n *ninjaTest) Paths(ctx context.Context, target string, dependency string) (*bytes.Buffer, error) {
 	return bytes.NewBufferString(n.paths.text), n.paths.err
+}
+func (n *ninjaTest) Deps(ctx context.Context) (*bytes.Buffer, error) {
+	return bytes.NewBufferString(n.deps.text), n.deps.err
 }
 func (n *ninjaTest) Build(ctx context.Context, target string) (*bytes.Buffer, error) {
 	return bytes.NewBufferString(n.build.text), n.build.err
@@ -72,6 +76,10 @@ func Test_ninja(t *testing.T) {
 		cmd *TestCmd
 		res []*app.BuildPath
 	}
+	type depsTest struct {
+		cmd *TestCmd
+		res *app.BuildDeps
+	}
 	type buildTest struct {
 		cmd *TestCmd
 		res *app.BuildCmdResult
@@ -84,6 +92,7 @@ func Test_ninja(t *testing.T) {
 		input      inputTest
 		path       pathTest
 		paths      pathsTest
+		deps       depsTest
 		build      buildTest
 	}{
 		{
@@ -111,6 +120,14 @@ func Test_ninja(t *testing.T) {
 					&app.BuildPath{Target: "test", Dependency: "dependency", Paths: []string{"test", "mid4", "dependency"}},
 				},
 			},
+			deps: depsTest{
+				cmd: &TestCmd{text: "some/build/library.so: #deps1\n    dependentFile1.S\n    dependentFile2.S\nsome/build/library2.so: #deps1\n    dependentFile1.S\n    dependentFile3.S\n"},
+				res: &app.BuildDeps{Targets: map[string][]string{
+					"some/build/library.so":  []string{"dependentFile1.S", "dependentFile2.S"},
+					"some/build/library2.so": []string{"dependentFile1.S", "dependentFile3.S"},
+				},
+				},
+			},
 			build: buildTest{
 				cmd: &TestCmd{text: "", err: nil},
 				res: &app.BuildCmdResult{Name: "test", Output: []string{}, Success: true}},
@@ -124,6 +141,7 @@ func Test_ninja(t *testing.T) {
 			input:   test.input.cmd,
 			path:    test.path.cmd,
 			paths:   test.paths.cmd,
+			deps:    test.deps.cmd,
 			build:   test.build.cmd,
 		}
 		n := &ninjaCli{n: exec}
@@ -173,6 +191,16 @@ func Test_ninja(t *testing.T) {
 			} else {
 				if !reflect.DeepEqual(res, test.paths.res) {
 					t.Errorf("Paths result %v; want %v", res, test.paths.res)
+				}
+			}
+
+		}
+		if test.deps.cmd != nil {
+			if res, err := n.Deps(nil); err != nil {
+				t.Errorf("Deps error %s", err)
+			} else {
+				if !reflect.DeepEqual(res, test.deps.res) {
+					t.Errorf("Deps result %v; want %v", res, test.deps.res)
 				}
 			}
 
