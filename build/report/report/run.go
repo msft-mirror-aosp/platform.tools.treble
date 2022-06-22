@@ -56,6 +56,20 @@ func binaryExecutables(ctx context.Context, dir string, recursive bool) ([]strin
 	return files, numSymLinks, err
 }
 
+// Resolve the manifest
+func (rtx *Context) ResolveProjectMap(ctx context.Context, manifest string, upstreamBranch string) {
+	if rtx.Info == nil {
+		rtx.Info = resolveProjectMap(ctx, rtx, manifest, true, upstreamBranch)
+	}
+}
+
+// Find host tools
+func ResolveHostTools(ctx context.Context, hostToolPath string) (*app.HostReport, error) {
+	out := &app.HostReport{Path: hostToolPath}
+	out.Targets, out.SymLinks, _ = binaryExecutables(ctx, hostToolPath, true)
+	return out, nil
+}
+
 // Run reports
 
 //
@@ -69,69 +83,40 @@ func binaryExecutables(ctx context.Context, dir string, recursive bool) ([]strin
 // queries can be fully resolved
 //
 func RunReport(ctx context.Context, rtx *Context, req *app.ReportRequest) (*app.Report, error) {
-
-	repoCh := resolveProjectMap(ctx, rtx, req.ManifestFile, true)
 	inChan, targetCh := targetResolvers(ctx, rtx)
-	hostTargetSymLinks := 0
-	hostTargetMap := make(map[string]bool)
 	go func() {
 		for i, _ := range req.Targets {
 			inChan <- req.Targets[i]
 		}
-
-		if req.IncludeHostTools {
-			hostTargets, symLinks, _ := binaryExecutables(ctx, req.HostToolPath, true)
-			hostTargetSymLinks = symLinks
-			for i, _ := range hostTargets {
-				inChan <- hostTargets[i]
-				hostTargetMap[hostTargets[i]] = true
-			}
-		}
 		close(inChan)
 	}()
-	// Wait for repo projects to be resolved
-	repo := <-repoCh
 
 	// Resolve the build inputs into build target projects
-	buildTargetChan := resolveBuildInputs(ctx, rtx, repo, targetCh)
+	buildTargetChan := resolveBuildInputs(ctx, rtx, targetCh)
 
-	out := &app.Report{}
-	if req.IncludeHostTools {
-		out.Host = &app.HostReport{Path: req.HostToolPath, SymLinks: hostTargetSymLinks}
-	}
+	out := &app.Report{Targets: make(map[string]*app.BuildTarget)}
 	for bt := range buildTargetChan {
-		if _, exists := hostTargetMap[bt.Name]; exists {
-			out.Host.Targets = append(out.Host.Targets, bt)
-		} else {
-			out.Targets = append(out.Targets, bt)
-		}
+		out.Targets[bt.Name] = bt
 	}
 
 	return out, nil
 }
 
-// Resolve set of commits into set of files
-func ResolveCommits(ctx context.Context, rtx *Context, req *app.ProjectCommits) ([]string, error) {
-	// Resolve project map, don't need the repo files here
-	repo := <-resolveProjectMap(ctx, rtx, req.ManifestFile, false)
-
-	files := []string{}
-	// Resolve any commits
-	for _, commit := range req.Commits {
-		if proj, exists := repo.ProjMap[commit.Project]; exists {
-			info, err := rtx.Project.CommitInfo(ctx, proj.GitProj, commit.Revision)
-			if err == nil {
-				for _, f := range info.Files {
-					if f.Type != app.GitFileRemoved {
-						files = append(files, filepath.Join(proj.RepoPath, f.Filename))
-					}
+// Resolve commit into git commit info
+func ResolveCommit(ctx context.Context, rtx *Context, commit *app.ProjectCommit) (*app.GitCommit, []string, error) {
+	if proj, exists := rtx.Info.ProjMap[commit.Project]; exists {
+		info, err := rtx.Project.CommitInfo(ctx, proj.GitProj, commit.Revision)
+		files := []string{}
+		if err == nil {
+			for _, f := range info.Files {
+				if f.Type != app.GitFileRemoved {
+					files = append(files, filepath.Join(proj.GitProj.RepoDir, f.Filename))
 				}
 			}
-		} else {
-			return nil, errors.New(fmt.Sprintf("Failed to find commit %s:%s", commit.Project, commit.Revision))
 		}
+		return info, files, err
 	}
-	return files, nil
+	return nil, nil, errors.New(fmt.Sprintf("Unknown project %s", commit.Project))
 
 }
 
@@ -184,29 +169,10 @@ func RunQuery(ctx context.Context, rtx *Context, req *app.QueryRequest) (*app.Qu
 	return out, nil
 }
 
-// Check if path exists between target and outputs provided, return outputs that have a
-// path to target.  Only return valid paths via the output any errors are dropped
-func RunPathFilter(ctx context.Context, rtx *Context, target string, outputs []string) []string {
-	var filter []string
-	inChan, pathCh := pathResolvers(ctx, rtx, target)
-	// Convert source files to outputs
-	go func() {
-		for _, out := range outputs {
-			inChan <- out
-		}
-		close(inChan)
-	}()
-	for result := range pathCh {
-		if !result.error {
-			filter = append(filter, result.filename)
-		}
-	}
-	return filter
-}
-
-func RunPaths(ctx context.Context, rtx *Context, target string, files []string) []*app.BuildPath {
+// Get paths
+func RunPaths(ctx context.Context, rtx *Context, target string, singlePath bool, files []string) []*app.BuildPath {
 	out := []*app.BuildPath{}
-	inChan, pathCh := pathsResolvers(ctx, rtx, target)
+	inChan, pathCh := pathsResolvers(ctx, rtx, target, singlePath)
 	// Convert source files to outputs
 	go func() {
 		for _, f := range files {

@@ -26,6 +26,9 @@ import (
 	"tools/treble/build/report/app"
 )
 
+// Performance degrades running multiple CLIs
+const MaxNinjaCliWorkers = 4
+
 // Separate out the executable to allow tests to override the results
 type ninjaExec interface {
 	Command(ctx context.Context, target string) (*bytes.Buffer, error)
@@ -33,6 +36,7 @@ type ninjaExec interface {
 	Query(ctx context.Context, target string) (*bytes.Buffer, error)
 	Path(ctx context.Context, target string, dependency string) (*bytes.Buffer, error)
 	Paths(ctx context.Context, target string, dependency string) (*bytes.Buffer, error)
+	Deps(ctx context.Context) (*bytes.Buffer, error)
 	Build(ctx context.Context, target string) (*bytes.Buffer, error)
 }
 
@@ -124,6 +128,33 @@ func parseBuild(target string, data *bytes.Buffer, success bool) *app.BuildCmdRe
 	return out
 }
 
+// parse deps command
+func parseDeps(data *bytes.Buffer) (*app.BuildDeps, error) {
+	out := &app.BuildDeps{Targets: make(map[string][]string)}
+	s := bufio.NewScanner(data)
+	curTarget := ""
+	var deps []string
+	for s.Scan() {
+		line := strings.TrimSpace(s.Text())
+		// Check if it's a new target
+		tokens := strings.Split(line, ":")
+		if len(tokens) > 1 {
+			if curTarget != "" {
+				out.Targets[curTarget] = deps
+			}
+			deps = []string{}
+			curTarget = tokens[0]
+		} else if line != "" {
+			deps = append(deps, line)
+		}
+
+	}
+	if curTarget != "" {
+		out.Targets[curTarget] = deps
+	}
+	return out, nil
+}
+
 //
 // Command line interface to ninja binary.
 //
@@ -135,6 +166,7 @@ func parseBuild(target string, data *bytes.Buffer, success bool) *app.BuildCmdRe
 //    Query()     -t query
 //    Path()      -t path
 //    Paths()     -t paths
+//    Deps()      -t deps
 //
 //
 
@@ -172,6 +204,10 @@ func (n *ninjaCmd) Path(ctx context.Context, target string, dependency string) (
 func (n *ninjaCmd) Paths(ctx context.Context, target string, dependency string) (*bytes.Buffer, error) {
 	return n.runTool(ctx, "paths", []string{target, dependency})
 }
+func (n *ninjaCmd) Deps(ctx context.Context) (*bytes.Buffer, error) {
+	return n.runTool(ctx, "deps", []string{})
+}
+
 func (n *ninjaCmd) Build(ctx context.Context, target string) (*bytes.Buffer, error) {
 
 	args := append([]string{
@@ -234,6 +270,15 @@ func (cli *ninjaCli) Paths(ctx context.Context, target string, dependency string
 	return parsePaths(target, dependency, raw)
 }
 
+// ninja -t deps
+func (cli *ninjaCli) Deps(ctx context.Context) (*app.BuildDeps, error) {
+	raw, err := cli.n.Deps(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return parseDeps(raw)
+}
+
 // Build given target
 func (cli *ninjaCli) Build(ctx context.Context, target string) *app.BuildCmdResult {
 	raw, err := cli.n.Build(ctx, target)
@@ -242,5 +287,5 @@ func (cli *ninjaCli) Build(ctx context.Context, target string) *app.BuildCmdResu
 }
 func NewNinjaCli(cmd string, db string) *ninjaCli {
 	cli := &ninjaCli{n: &ninjaCmd{cmd: cmd, db: db, timeout: 100000 * time.Millisecond, buildTimeout: 300000 * time.Millisecond}}
-	return (cli)
+	return cli
 }

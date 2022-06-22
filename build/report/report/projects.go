@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"tools/treble/build/report/app"
 )
@@ -28,60 +29,15 @@ import (
 // Repo and project related functions
 //
 type project struct {
-	Name     string                    // Name
-	RepoPath string                    // Path in repo
-	GitProj  *app.GitProject           // Git project data
-	ObjMap   map[string]app.GitTreeObj // Mapping of filename to git tree object
+	Name    string          // Name
+	GitProj *app.GitProject // Git project data
 }
 
-var unknownProject = &project{Name: "unknown", RepoPath: "unknown", GitProj: &app.GitProject{}}
-
-// Repo containing a map of projects, this also contains a
-// map between a source file and the project it belongs to
-// allowing a quicker lookup of source file to project
-type repo struct {
-	RepoBase  string              // Absolute path to repo base
-	ProjMap   map[string]*project // Map project name to project
-	FileCache map[string]*project // map source files to project
-}
-
-// Create a mapping of projects from the input source manifest
-func createProjectMap(ctx context.Context, manifest *app.RepoManifest, repoBase string, proj ProjectDependencies, getFiles bool) *repo {
-	if !strings.HasSuffix(repoBase, "/") {
-		repoBase += "/"
-	}
-	repo := &repo{RepoBase: repoBase}
-	// Create map of remotes
-	remotes := make(map[string]*app.RepoRemote)
-	var defRemotePtr *app.RepoRemote
-	for i, _ := range manifest.Remotes {
-		remotes[manifest.Remotes[i].Name] = &manifest.Remotes[i]
-	}
-
-	defRemotePtr, exists := remotes[manifest.Default.Remote]
-	if !exists {
-		fmt.Printf("Failed to find default remote")
-	}
-	repo.FileCache = make(map[string]*project)
-	repo.ProjMap = make(map[string]*project)
-	for i, _ := range manifest.Projects {
-
-		remotePtr := defRemotePtr
-		if manifest.Projects[i].Remote != nil {
-			remotePtr = remotes[*manifest.Projects[i].Remote]
-		}
-		proj := resolveProject(ctx, &manifest.Projects[i], remotePtr, proj, getFiles, &repo.FileCache)
-		if proj != nil {
-			// Add the remote information
-			repo.ProjMap[proj.Name] = proj
-		}
-	}
-	return repo
-}
+var unknownProject = &project{Name: "unknown", GitProj: &app.GitProject{}}
 
 // Convert repo project to project with source files and revision
 // information
-func resolveProject(ctx context.Context, repoProj *app.RepoProject, remote *app.RepoRemote, proj ProjectDependencies, getFiles bool, fileCache *map[string]*project) *project {
+func resolveProject(ctx context.Context, repoProj *app.RepoProject, remote *app.RepoRemote, proj ProjectDependencies, getFiles bool, upstreamBranch string) *project {
 
 	path := repoProj.Path
 	if path == "" {
@@ -110,17 +66,13 @@ func resolveProject(ctx context.Context, repoProj *app.RepoProject, remote *app.
 		gitDir = filepath.Join(parts[repostart:]...)
 
 	}
-	gitProj, err := proj.Project(ctx, path, gitDir, remote.Name, repoProj.Revision, getFiles)
+	gitProj, err := proj.Project(ctx, path, gitDir, remote.Name, repoProj.Revision)
 	if err != nil {
 		return nil
 	}
-	out := &project{Name: repoProj.Name, RepoPath: path, GitProj: gitProj}
-	if len(gitProj.Files) > 0 {
-		out.ObjMap = make(map[string]app.GitTreeObj)
-		for _, obj := range gitProj.Files {
-			(*fileCache)[filepath.Join(path, obj.Filename)] = out
-			out.ObjMap[obj.Filename] = obj
-		}
+	out := &project{Name: repoProj.Name, GitProj: gitProj}
+	if getFiles {
+		_ = proj.PopulateFiles(ctx, gitProj, upstreamBranch)
 	}
 	return out
 }
@@ -130,43 +82,97 @@ func resolveProject(ctx context.Context, repoProj *app.RepoProject, remote *app.
 // then resolve the file via the project found.
 //
 // Most files will be relative paths from the repo workspace
-func lookupProjectFile(ctx context.Context, repo *repo, filename *string) (*project, *app.BuildFile) {
-	if proj, exists := repo.FileCache[*filename]; exists {
-		repoName := (*filename)[len(proj.RepoPath)+1:]
-		if gitObj, exists := proj.ObjMap[repoName]; exists {
-			return proj, &app.BuildFile{Name: gitObj.Filename, Revision: gitObj.Sha}
+func lookupProjectFile(ctx context.Context, rtx *Context, filename string) (*project, *app.GitTreeObj) {
+	if proj, exists := rtx.Info.FileCache[filename]; exists {
+		repoName := (filename)[len(proj.GitProj.RepoDir)+1:]
+		if gitObj, exists := proj.GitProj.Files[repoName]; exists {
+			return proj, gitObj
 		}
 		return proj, nil
 	} else {
 		// Try resolving any symlinks
-		if realpath, err := filepath.EvalSymlinks(*filename); err == nil {
-			if realpath != *filename {
-				return lookupProjectFile(ctx, repo, &realpath)
+		if realpath, err := filepath.EvalSymlinks(filename); err == nil {
+			if realpath != filename {
+				return lookupProjectFile(ctx, rtx, realpath)
 			}
 		}
 
-		if strings.HasPrefix(*filename, repo.RepoBase) {
+		if strings.HasPrefix(filename, rtx.RepoBase) {
 			// Some dependencies pick up the full path try stripping out
-			relpath := (*filename)[len(repo.RepoBase)+1:]
-			return lookupProjectFile(ctx, repo, &relpath)
+			relpath := (filename)[len(rtx.RepoBase):]
+			return lookupProjectFile(ctx, rtx, relpath)
 		}
 	}
-	return unknownProject, &app.BuildFile{Name: *filename, Revision: ""}
+	return unknownProject, &app.GitTreeObj{Filename: filename, Sha: ""}
 }
 
 // Create a mapping of projects from the input source manifest
-func resolveProjectMap(ctx context.Context, rtx *Context, manifestFile string, getFiles bool) chan *repo {
-	outChan := make(chan *repo)
+func resolveProjectMap(ctx context.Context, rtx *Context, manifestFile string, getFiles bool, upstreamBranch string) *ProjectInfo {
+	// Parse the manifest file
+	manifest, err := rtx.Repo.Manifest(manifestFile)
+	if err != nil {
+		return nil
+	}
+	info := &ProjectInfo{}
+	// Create map of remotes
+	remotes := make(map[string]*app.RepoRemote)
+	var defRemotePtr *app.RepoRemote
+	for i, _ := range manifest.Remotes {
+		remotes[manifest.Remotes[i].Name] = &manifest.Remotes[i]
+	}
+
+	defRemotePtr, exists := remotes[manifest.Default.Remote]
+	if !exists {
+		fmt.Printf("Failed to find default remote")
+	}
+	info.FileCache = make(map[string]*project)
+	info.ProjMap = make(map[string]*project)
+
+	var wg sync.WaitGroup
+	projChan := make(chan *project)
+	repoChan := make(chan *app.RepoProject)
+
+	for i := 0; i < rtx.WorkerCount; i++ {
+		wg.Add(1)
+		go func() {
+			for repoProj := range repoChan {
+				remotePtr := defRemotePtr
+				if manifest.Projects[i].Remote != nil {
+					remotePtr = remotes[*manifest.Projects[i].Remote]
+				}
+				proj := resolveProject(ctx, repoProj, remotePtr, rtx.Project, getFiles, upstreamBranch)
+				if proj != nil {
+					projChan <- proj
+				} else {
+					projChan <- &project{Name: repoProj.Name}
+				}
+			}
+			wg.Done()
+		}()
+	}
 	go func() {
-		defer close(outChan)
-		// Parse the manifest file
-		xmlRepo, err := rtx.Repo.Manifest(manifestFile)
-		if err != nil {
-			return
-		}
-		// Convert manifest into projects with source files
-		repo := createProjectMap(ctx, xmlRepo, rtx.RepoBase, rtx.Project, getFiles)
-		outChan <- repo
+		wg.Wait()
+		close(projChan)
 	}()
-	return outChan
+	go func() {
+		for i, _ := range manifest.Projects {
+			repoChan <- &manifest.Projects[i]
+		}
+		close(repoChan)
+	}()
+	for r := range projChan {
+		if r.GitProj != nil {
+			info.ProjMap[r.Name] = r
+			if len(r.GitProj.Files) > 0 {
+				for n := range r.GitProj.Files {
+					info.FileCache[filepath.Join(r.GitProj.RepoDir, n)] = r
+				}
+
+			}
+
+		} else {
+			fmt.Printf("Failed to resolve %s\n", r.Name)
+		}
+	}
+	return info
 }
