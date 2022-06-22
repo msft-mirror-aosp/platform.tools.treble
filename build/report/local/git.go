@@ -24,6 +24,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,10 +33,11 @@ import (
 
 // Separate out the executable to allow tests to override the results
 type gitExec interface {
-	ProjectInfo(ctx context.Context, gitDir string, workDir string) (out *bytes.Buffer, err error)
-	RemoteUrl(ctx context.Context, gitDir string, workDir string, remote string) (*bytes.Buffer, error)
-	Tree(ctx context.Context, gitDir string, workDir string, revision string) (*bytes.Buffer, error)
-	CommitInfo(ctx context.Context, gitDir string, workDir string, revision string) (*bytes.Buffer, error)
+	ProjectInfo(ctx context.Context, gitDir, workDir string) (out *bytes.Buffer, err error)
+	RemoteUrl(ctx context.Context, gitDir, workDir, remote string) (*bytes.Buffer, error)
+	Tree(ctx context.Context, gitDir, workDir, revision string) (*bytes.Buffer, error)
+	CommitInfo(ctx context.Context, gitDir, workDir, revision string) (*bytes.Buffer, error)
+	DiffBranches(ctx context.Context, gitDir, workDir, upstream, sha string) (*bytes.Buffer, error)
 }
 
 type gitCli struct {
@@ -43,7 +45,7 @@ type gitCli struct {
 }
 
 // Create GIT project based on input parameters
-func (cli gitCli) Project(ctx context.Context, path string, gitDir string, remote string, revision string, getFiles bool) (*app.GitProject, error) {
+func (cli gitCli) Project(ctx context.Context, path, gitDir, remote, revision string) (*app.GitProject, error) {
 	workDir := path
 	// Set defaults
 	if remote == "" {
@@ -64,11 +66,13 @@ func (cli gitCli) Project(ctx context.Context, path string, gitDir string, remot
 		}
 	}
 	// Create project to use to run commands
-	out := &app.GitProject{WorkDir: workDir,
+	out := &app.GitProject{
+		RepoDir:  path,
+		WorkDir:  workDir,
 		GitDir:   gitDir,
 		Remote:   remote,
 		Revision: revision,
-		Files:    []app.GitTreeObj{}}
+		Files:    make(map[string]*app.GitTreeObj)}
 
 	// Remote URL
 	if raw, err := cli.git.RemoteUrl(ctx, gitDir, workDir, remote); err == nil {
@@ -78,18 +82,33 @@ func (cli gitCli) Project(ctx context.Context, path string, gitDir string, remot
 		}
 	}
 
-	//  all files in repo
-	if getFiles {
-		if raw, err := cli.git.Tree(ctx, gitDir, workDir, revision); err == nil {
-			lsFiles, err := parseLsTree(raw)
-			if err == nil {
-				out.Files = *lsFiles
+	return out, nil
+}
+
+// Get all files in the repository if, upstream branch is provided mark which files differ from upstream
+func (cli gitCli) PopulateFiles(ctx context.Context, proj *app.GitProject, upstream string) error {
+	if raw, err := cli.git.Tree(ctx, proj.GitDir, proj.WorkDir, proj.Revision); err == nil {
+		lsFiles, err := parseLsTree(raw)
+		if err == nil {
+			for _, file := range lsFiles {
+				proj.Files[file.Filename] = file
+			}
+		}
+		if upstream != "" {
+
+			if diff, err := cli.git.DiffBranches(ctx, proj.GitDir, proj.WorkDir, upstream, proj.Revision); err == nil {
+				if diffFiles, err := parseBranchDiff(diff); err == nil {
+					for f, d := range diffFiles {
+						if file, exists := proj.Files[f]; exists {
+							file.BranchDiff = d
+						}
+					}
+				}
 			}
 
 		}
 	}
-	return out, nil
-
+	return nil
 }
 
 // Get the commit information associated with the input sha
@@ -128,15 +147,36 @@ func parseRemoteUrl(data *bytes.Buffer) (url string, err error) {
 }
 
 // parse ls-tree
-func parseLsTree(data *bytes.Buffer) (*[]app.GitTreeObj, error) {
-	out := &[]app.GitTreeObj{}
+func parseLsTree(data *bytes.Buffer) ([]*app.GitTreeObj, error) {
+	out := []*app.GitTreeObj{}
 	s := bufio.NewScanner(data)
 	for s.Scan() {
-		obj := app.GitTreeObj{}
+		obj := &app.GitTreeObj{}
 		// TODO
 		// Filename could contain a <space> as quotepath is turned off, truncating the name here
 		fmt.Sscanf(s.Text(), "%s %s %s %s", &obj.Permissions, &obj.Type, &obj.Sha, &obj.Filename)
-		*out = append(*out, obj)
+		out = append(out, obj)
+	}
+	return out, nil
+}
+
+// parse branch diff (diff --num-stat)
+func parseBranchDiff(data *bytes.Buffer) (map[string]*app.GitDiff, error) {
+	out := make(map[string]*app.GitDiff)
+	s := bufio.NewScanner(data)
+	for s.Scan() {
+		d := &app.GitDiff{}
+		var fname, added, deleted string
+		_, err := fmt.Sscanf(s.Text(), "%s %s %s", &added, &deleted, &fname)
+		if err == nil {
+			if added == "-" || deleted == "-" {
+				d.BinaryDiff = true
+			} else {
+				d.AddedLines, _ = strconv.Atoi(added)
+				d.DeletedLines, _ = strconv.Atoi(deleted)
+			}
+		}
+		out[fname] = d
 	}
 	return out, nil
 }
@@ -184,21 +224,24 @@ func (git *gitCmd) runDirCmd(ctx context.Context, gitDir string, workDir string,
 	return out, nil
 }
 
-func (git *gitCmd) ProjectInfo(ctx context.Context, gitDir string, workDir string) (*bytes.Buffer, error) {
+func (git *gitCmd) ProjectInfo(ctx context.Context, gitDir, workDir string) (*bytes.Buffer, error) {
 	return git.runDirCmd(ctx, gitDir, workDir, []string{"rev-parse", "--show-toplevel", "HEAD"})
 }
-func (git *gitCmd) RemoteUrl(ctx context.Context, gitDir string, workDir string, remote string) (*bytes.Buffer, error) {
+func (git *gitCmd) RemoteUrl(ctx context.Context, gitDir, workDir, remote string) (*bytes.Buffer, error) {
 	return git.runDirCmd(ctx, gitDir, workDir, []string{"remote", "get-url", remote})
 }
-func (git *gitCmd) Tree(ctx context.Context, gitDir string, workDir string, revision string) (*bytes.Buffer, error) {
+func (git *gitCmd) Tree(ctx context.Context, gitDir, workDir, revision string) (*bytes.Buffer, error) {
 	cmdArgs := []string{"-c", "core.quotepath=off", "ls-tree", "--full-name", revision, "-r", "-t"}
 	return git.runDirCmd(ctx, gitDir, workDir, cmdArgs)
 }
-func (git *gitCmd) CommitInfo(ctx context.Context, gitDir string, workDir string, sha string) (*bytes.Buffer, error) {
+func (git *gitCmd) CommitInfo(ctx context.Context, gitDir, workDir, sha string) (*bytes.Buffer, error) {
 	cmdArgs := []string{"diff-tree", "-r", "-m", "--name-status", "--root", sha}
 	return git.runDirCmd(ctx, gitDir, workDir, cmdArgs)
 }
-
+func (git *gitCmd) DiffBranches(ctx context.Context, gitDir, workDir, upstream, sha string) (*bytes.Buffer, error) {
+	cmdArgs := []string{"diff", "--numstat", fmt.Sprintf("%s...%s", upstream, sha)}
+	return git.runDirCmd(ctx, gitDir, workDir, cmdArgs)
+}
 func NewGitCli() *gitCli {
 	cli := &gitCli{git: &gitCmd{cmd: "git", timeout: 100000 * time.Millisecond}}
 	return cli
