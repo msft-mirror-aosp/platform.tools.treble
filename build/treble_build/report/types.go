@@ -25,11 +25,21 @@ func (r *RepoMan) Manifest(filename string) (*app.RepoManifest, error) {
 	return app.ParseXml(filename)
 }
 
+// Project information containing a map of projects, this also contains a
+// map between a source file and the project it belongs to
+// allowing a quicker lookup of source file to project
+type ProjectInfo struct {
+	ProjMap   map[string]*project // Map project name to project
+	FileCache map[string]*project // Map source files to project
+}
+
 // Report context
 type Context struct {
-	RepoBase    string              // Absolute repo base directory
-	Repo        RepoDependencies    // Repo interface
-	Build       BuildDependencies   // Build interface
-	Project     ProjectDependencies // Project interface
-	WorkerCount int                 // Number of worker threads
+	RepoBase         string              // Absolute path to repo base
+	Repo             RepoDependencies    // Repo interface
+	Build            BuildDependencies   // Build interface
+	Project          ProjectDependencies // Project interface
+	WorkerCount      int                 // Number of worker threads
+	BuildWorkerCount int                 // Number of build worker threads
+	Info             *ProjectInfo        // Project information
 }

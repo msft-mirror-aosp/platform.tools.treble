@@ -26,10 +26,12 @@ type BuildDependencies interface {
 	Query(ctx context.Context, target string) (*app.BuildQuery, error)
 	Path(ctx context.Context, target string, dependency string) (*app.BuildPath, error)
 	Paths(ctx context.Context, target string, dependency string) ([]*app.BuildPath, error)
+	Deps(ctx context.Context) (*app.BuildDeps, error)
 }
 
 type ProjectDependencies interface {
-	Project(ctx context.Context, path string, gitDir string, remote string, revision string, getFiles bool) (*app.GitProject, error)
+	Project(ctx context.Context, path string, gitDir string, remote string, revision string) (*app.GitProject, error)
+	PopulateFiles(ctx context.Context, proj *app.GitProject, upstream string) error
 	CommitInfo(ctx context.Context, proj *app.GitProject, sha string) (*app.GitCommit, error)
 }
 

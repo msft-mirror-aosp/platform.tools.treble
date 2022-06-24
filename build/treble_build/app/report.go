@@ -16,35 +16,25 @@ package app
 
 // Report request structure
 type ReportRequest struct {
-	IncludeHostTools bool     `json:"include_host_tools"` // Get target information for all host tools found
-	HostToolPath     string   `json:"host_tool_path"`     // Location of output host tools
-	ManifestFile     string   `json:"manifest"`           // Repo manifest file
-	Targets          []string `json:"targets"`            // Targets
-}
-
-// Host tool report response data
-type HostReport struct {
-	Path     string         `json:"path"`      // Path to find host tools
-	SymLinks int            `json:"sym_links"` // Number of symlinks found
-	Targets  []*BuildTarget `json:"targets"`   // Build targets for tools found
+	Targets []string `json:"targets"` // Targets
 }
 
 // Report response data
 type Report struct {
-	Host    *HostReport    `json:"host"`    // Host response
-	Targets []*BuildTarget `json:"targets"` // Build target data
+	Targets map[string]*BuildTarget `json:"targets"` // Build target data
+}
+
+// Host tool report response data
+type HostReport struct {
+	Path     string   `json:"path"`      // Path to find host tools
+	SymLinks int      `json:"sym_links"` // Number of symlinks found
+	Targets  []string `json:"targets"`   // Target for tools found
 }
 
 // Project level commit
 type ProjectCommit struct {
 	Project  string `json:"project"`  // Project
 	Revision string `json:"revision"` // Revision
-}
-
-// Project level commits
-type ProjectCommits struct {
-	ManifestFile string          `json:"manifest"` // Repo manifest file
-	Commits      []ProjectCommit `json:"commits"`  // Commits to resolve
 }
 
 // Query request
