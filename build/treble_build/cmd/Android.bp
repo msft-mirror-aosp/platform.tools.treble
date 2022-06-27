@@ -24,10 +24,10 @@ package {
 blueprint_go_binary {
     name: "treble_build",
     srcs: [
+        "host.go",
         "main.go",
-        "outputs.go",
-        "report.go",
-
+        "paths.go",
+        "query.go",
     ],
     deps: [
         "treble_report_app",

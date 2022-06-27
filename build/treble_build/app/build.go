@@ -39,26 +39,12 @@ type BuildPath struct {
 	Paths      []string `json:paths"`
 }
 
-// Build file
-type BuildFile struct {
-	Name     string `json:"name"`     // Source file name
-	Revision string `json:"revision"` // SHA revision
-}
-
-// Build project
-type BuildProject struct {
-	Path     string      `json:"path"`     // Project path
-	Name     string      `json:"name"`     // Project name
-	Revision string      `json:"revision"` // SHA revision of project
-	Files    []BuildFile `json:"files"`    // Project files
-}
-
 // Build target
 type BuildTarget struct {
-	Name      string                   `json:"name"`        // Target name
-	Steps     int                      `json:"build_steps"` // Number of steps to build target
-	FileCount int                      `json:"files"`       // Number of input files for a target
-	Projects  map[string]*BuildProject `json:"projects"`    // Inputs projects/files of a target
+	Name      string                 `json:"name"`        // Target name
+	Steps     int                    `json:"build_steps"` // Number of steps to build target
+	FileCount int                    `json:"files"`       // Number of input files for a target
+	Projects  map[string]*GitProject `json:"projects"`    // Inputs projects/files of a target
 }
 
 // Build command result
@@ -66,4 +52,9 @@ type BuildCmdResult struct {
 	Name    string   `json:"name"`
 	Output  []string `json:"output"`
 	Success bool     `json:"success"`
+}
+
+// Build dependencies
+type BuildDeps struct {
+	Targets map[string][]string `json:"targets"`
 }
