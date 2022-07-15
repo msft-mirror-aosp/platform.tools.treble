@@ -18,6 +18,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"strings"
@@ -27,7 +29,11 @@ import (
 )
 
 // Performance degrades running multiple CLIs
-const MaxNinjaCliWorkers = 4
+const (
+	MaxNinjaCliWorkers       = 4
+	DefaultNinjaTimeout      = "100s"
+	DefaultNinjaBuildTimeout = "30m"
+)
 
 // Separate out the executable to allow tests to override the results
 type ninjaExec interface {
@@ -37,6 +43,7 @@ type ninjaExec interface {
 	Path(ctx context.Context, target string, dependency string) (*bytes.Buffer, error)
 	Paths(ctx context.Context, target string, dependency string) (*bytes.Buffer, error)
 	Deps(ctx context.Context) (*bytes.Buffer, error)
+	StartServer(ctx context.Context) error
 	Build(ctx context.Context, target string) (*bytes.Buffer, error)
 }
 
@@ -174,14 +181,23 @@ type ninjaCmd struct {
 	cmd string
 	db  string
 
+	clientMode   bool
 	timeout      time.Duration
 	buildTimeout time.Duration
 }
 
 func (n *ninjaCmd) runTool(ctx context.Context, tool string, targets []string) (out *bytes.Buffer, err error) {
-	args := append([]string{
-		"-f", n.db,
-		"-t", tool}, targets...)
+
+	args := []string{"-f", n.db}
+
+	if n.clientMode {
+		args = append(args, []string{
+			"-t", "client",
+			"-c", tool}...)
+	} else {
+		args = append(args, []string{"-t", tool}...)
+	}
+	args = append(args, targets...)
 	data := []byte{}
 	err, _ = runPipe(ctx, n.timeout, n.cmd, args, func(r io.Reader) {
 		data, _ = ioutil.ReadAll(r)
@@ -207,6 +223,10 @@ func (n *ninjaCmd) Paths(ctx context.Context, target string, dependency string) 
 func (n *ninjaCmd) Deps(ctx context.Context) (*bytes.Buffer, error) {
 	return n.runTool(ctx, "deps", []string{})
 }
+func (n *ninjaCmd) StartServer(ctx context.Context) error {
+	args := []string{"-f", n.db, "-t", "server"}
+	return runNoTimeout(ctx, n.cmd, args)
+}
 
 func (n *ninjaCmd) Build(ctx context.Context, target string) (*bytes.Buffer, error) {
 
@@ -221,6 +241,7 @@ func (n *ninjaCmd) Build(ctx context.Context, target string) (*bytes.Buffer, err
 	return bytes.NewBuffer(data), err
 }
 
+// Command line ninja
 type ninjaCli struct {
 	n ninjaExec
 }
@@ -285,7 +306,29 @@ func (cli *ninjaCli) Build(ctx context.Context, target string) *app.BuildCmdResu
 	return parseBuild(target, raw, err == nil)
 
 }
-func NewNinjaCli(cmd string, db string) *ninjaCli {
-	cli := &ninjaCli{n: &ninjaCmd{cmd: cmd, db: db, timeout: 100000 * time.Millisecond, buildTimeout: 300000 * time.Millisecond}}
+
+// Run server
+func (cli *ninjaCli) StartServer(ctx context.Context) error {
+	return cli.n.StartServer(ctx)
+}
+
+// Wait for server
+func (cli *ninjaCli) WaitForServer(ctx context.Context, maxTries int) error {
+	// Wait for server to response to an empty input request
+	fmt.Printf("Waiting for server.")
+	for i := 0; i < maxTries; i++ {
+		_, err := cli.Input(ctx, "")
+		if err == nil {
+			fmt.Printf("\nConnected\n")
+			return nil
+		}
+		fmt.Printf(".")
+		time.Sleep(time.Second)
+	}
+	fmt.Printf(" failed\n")
+	return errors.New("Failed to connect")
+}
+func NewNinjaCli(cmd string, db string, timeout, buildTimeout time.Duration, client bool) *ninjaCli {
+	cli := &ninjaCli{n: &ninjaCmd{cmd: cmd, db: db, timeout: timeout, buildTimeout: buildTimeout, clientMode: client}}
 	return cli
 }

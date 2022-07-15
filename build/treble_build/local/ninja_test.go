@@ -17,6 +17,7 @@ package local
 import (
 	"bytes"
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -50,6 +51,9 @@ func (n *ninjaTest) Paths(ctx context.Context, target string, dependency string)
 }
 func (n *ninjaTest) Deps(ctx context.Context) (*bytes.Buffer, error) {
 	return bytes.NewBufferString(n.deps.text), n.deps.err
+}
+func (n *ninjaTest) StartServer(ctx context.Context) error {
+	return errors.New("server not support")
 }
 func (n *ninjaTest) Build(ctx context.Context, target string) (*bytes.Buffer, error) {
 	return bytes.NewBufferString(n.build.text), n.build.err
