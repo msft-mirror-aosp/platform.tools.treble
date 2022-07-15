@@ -21,6 +21,7 @@ import (
 	"errors"
 	"io"
 	"os/exec"
+	"syscall"
 	"time"
 )
 
@@ -66,10 +67,22 @@ func run(ctx context.Context, timeout time.Duration, cmdName string, args []stri
 	return &outputBuf, nil, ""
 }
 
+// run without timeout, kill when application dies
+func runNoTimeout(ctx context.Context, cmdName string, args []string) error {
+	cmd := exec.CommandContext(ctx, cmdName, args[0:]...)
+	// Kill when app dies
+	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+	err := cmd.Start()
+	if err != nil {
+		return err
+	}
+	cmd.Wait()
+	return nil
+}
+
 // lineScanner
 //
-//  Map output lines to strings, with expected number of
-// lines
+// Map output lines to strings, with expected number of lines.
 type lineScanner struct {
 	Lines []string
 }

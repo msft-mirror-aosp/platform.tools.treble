@@ -26,6 +26,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	"tools/treble/build/report/app"
 	"tools/treble/build/report/local"
@@ -67,11 +68,14 @@ var (
 	// Common flags
 	ninjaDbPtr          = flag.String("ninja", local.DefNinjaDb(), "Set the .ninja file to use when building metrics")
 	ninjaExcPtr         = flag.String("ninja_cmd", local.DefNinjaExc(), "Set the ninja executable")
+	ninjaTimeoutStr     = flag.String("ninja_timeout", local.DefaultNinjaTimeout, "Default ninja timeout")
+	buildTimeoutStr     = flag.String("build_timeout", local.DefaultNinjaBuildTimeout, "Default build timeout")
 	manifestPtr         = flag.String("manifest", local.DefManifest(), "Set the location of the manifest file")
 	upstreamPtr         = flag.String("upstream", "", "Upstream branch to compare files against")
 	repoBasePtr         = flag.String("repo_base", local.DefRepoBase(), "Set the repo base directory")
 	workerCountPtr      = flag.Int("worker_count", runtime.NumCPU(), "Number of worker routines")
 	buildWorkerCountPtr = flag.Int("build_worker_count", local.MaxNinjaCliWorkers, "Number of build worker routines")
+	clientServerPtr     = flag.Bool("client_server", false, "Run client server mode")
 	buildPtr            = flag.Bool("build", false, "Build targets")
 	jsonPtr             = flag.Bool("json", false, "Print json data")
 	verbosePtr          = flag.Bool("v", false, "Print verbose text data")
@@ -81,6 +85,12 @@ var (
 	queryFlags = flag.NewFlagSet("query", flag.ExitOnError)
 	pathsFlags = flag.NewFlagSet("paths", flag.ExitOnError)
 )
+
+// Add profiling data
+type profTime struct {
+	Description  string  `json:"description"`
+	DurationSecs float64 `json:"duration"`
+}
 
 type commit struct {
 	Project app.ProjectCommit `json:"project"`
@@ -99,13 +109,31 @@ type response struct {
 	Query *app.QueryResponse `json:"query,omitempty"`
 	Paths []*app.BuildPath   `json:"build_paths,omitempty"`
 	Host  *app.HostReport    `json:"host,omitempty"`
+
+	// Profile data
+	Profile []*profTime `json:"profile"`
 }
 
 func main() {
+	startTime := time.Now()
 	ctx := context.Background()
 	rsp := &response{}
 
+	var addProfileData = func(desc string) {
+		rsp.Profile = append(rsp.Profile, &profTime{Description: desc, DurationSecs: time.Since(startTime).Seconds()})
+		startTime = time.Now()
+	}
 	flag.Parse()
+
+	ninjaTimeout, err := time.ParseDuration(*ninjaTimeoutStr)
+	if err != nil {
+		log.Fatalf("Invalid ninja timeout %s", *ninjaTimeoutStr)
+	}
+
+	buildTimeout, err := time.ParseDuration(*buildTimeoutStr)
+	if err != nil {
+		log.Fatalf("Invalid build timeout %s", *buildTimeoutStr)
+	}
 
 	subArgs := flag.Args()
 	if len(subArgs) < 1 {
@@ -115,7 +143,17 @@ func main() {
 	defBuildTarget := "droid"
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
-	ninja := local.NewNinjaCli(*ninjaExcPtr, *ninjaDbPtr)
+	ninja := local.NewNinjaCli(*ninjaExcPtr, *ninjaDbPtr, ninjaTimeout, buildTimeout, *clientServerPtr)
+
+	if *clientServerPtr {
+		go func() {
+			ninjaServ := local.NewNinjaCli(*ninjaExcPtr, *ninjaDbPtr, ninjaTimeout, buildTimeout, false)
+			ninjaServ.StartServer(ctx)
+		}()
+		if err := ninja.WaitForServer(ctx, 60); err != nil {
+			log.Fatalf("Failed to connect to server")
+		}
+	}
 	rtx := &report.Context{
 		RepoBase:         *repoBasePtr,
 		Repo:             &report.RepoMan{},
@@ -154,8 +192,10 @@ func main() {
 	default:
 		rsp.Targets = subArgs
 	}
-
+	addProfileData("Init")
 	rtx.ResolveProjectMap(ctx, *manifestPtr, *upstreamPtr)
+	addProfileData("Project Map")
+
 	// Resolve any commits
 	if len(commits) > 0 {
 		log.Printf("Resolving %s", commits.String())
@@ -171,6 +211,7 @@ func main() {
 			// Add files to list of inputs
 			rsp.Inputs = append(rsp.Inputs, files...)
 		}
+		addProfileData("Commit Resolution")
 	}
 
 	// Run any sub tools
@@ -178,6 +219,7 @@ func main() {
 		if err := subcommand.Run(ctx, rtx, rsp); err != nil {
 			log.Fatal(err)
 		}
+		addProfileData(subArgs[0])
 	}
 
 	buildErrors := 0
@@ -185,6 +227,7 @@ func main() {
 		for _, t := range rsp.Targets {
 			log.Printf("Building %s\n", t)
 			res := ninja.Build(ctx, t)
+			addProfileData(fmt.Sprintf("Build %s", t))
 			log.Printf("%s\n", res.Output)
 			if res.Success != true {
 				buildErrors++
@@ -194,10 +237,10 @@ func main() {
 	}
 
 	// Generate report
-	var err error
 	log.Printf("Generating report for targets %s", rsp.Targets)
 	req := &app.ReportRequest{Targets: rsp.Targets}
 	rsp.Report, err = report.RunReport(ctx, rtx, req)
+	addProfileData("Report")
 	if err != nil {
 		log.Fatal(fmt.Sprintf("Report failure <%s>", err))
 	}
@@ -292,6 +335,11 @@ func printTextReport(w io.Writer, subcommand tool, rsp *response, verbose bool) 
 	fmt.Fprintln(w, "  Targets")
 	for _, t := range rsp.Report.Targets {
 		targetPrint(t)
+	}
+
+	fmt.Fprintln(w, "  Run Times")
+	for _, p := range rsp.Profile {
+		fmt.Fprintf(w, "     %-30s : %f secs\n", p.Description, p.DurationSecs)
 	}
 
 }
