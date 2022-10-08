@@ -80,6 +80,7 @@ var (
 	jsonPtr             = flag.Bool("json", false, "Print json data")
 	verbosePtr          = flag.Bool("v", false, "Print verbose text data")
 	outputPtr           = flag.String("o", "", "Output to file")
+	projsPtr            = flag.Bool("projects", false, "Include project repo data")
 
 	hostFlags  = flag.NewFlagSet("host", flag.ExitOnError)
 	queryFlags = flag.NewFlagSet("query", flag.ExitOnError)
@@ -106,10 +107,10 @@ type response struct {
 	Report     *app.Report           `json:"report,omitempty"`
 
 	// Subcommand data
-	Query *app.QueryResponse `json:"query,omitempty"`
-	Paths []*app.BuildPath   `json:"build_paths,omitempty"`
-	Host  *app.HostReport    `json:"host,omitempty"`
-
+	Query    *app.QueryResponse         `json:"query,omitempty"`
+	Paths    []*app.BuildPath           `json:"build_paths,omitempty"`
+	Host     *app.HostReport            `json:"host,omitempty"`
+	Projects map[string]*app.GitProject `json:"projects,omitempty"`
 	// Profile data
 	Profile []*profTime `json:"profile"`
 }
@@ -136,10 +137,6 @@ func main() {
 	}
 
 	subArgs := flag.Args()
-	if len(subArgs) < 1 {
-		// Nothing to do
-		return
-	}
 	defBuildTarget := "droid"
 	log.SetFlags(log.LstdFlags | log.Llongfile)
 
@@ -152,7 +149,7 @@ func main() {
 
 			ninjaServ.Start(ctx)
 		}()
-		if err := ninja.WaitForServer(ctx, 60); err != nil {
+		if err := ninja.WaitForServer(ctx, int(ninjaTimeout.Seconds())); err != nil {
 			log.Fatalf("Failed to connect to server")
 		}
 	}
@@ -167,36 +164,45 @@ func main() {
 
 	var subcommand tool
 	var commits repoFlags
+	if len(subArgs) > 0 {
+		switch subArgs[0] {
+		case "host":
+			hostToolPathPtr := hostFlags.String("hostbin", local.DefHostBinPath(), "Set the output directory for host tools")
+			hostFlags.Parse(subArgs[1:])
 
-	switch subArgs[0] {
-	case "host":
-		hostToolPathPtr := hostFlags.String("hostbin", local.DefHostBinPath(), "Set the output directory for host tools")
-		hostFlags.Parse(subArgs[1:])
+			subcommand = &hostReport{toolPath: *hostToolPathPtr}
+			rsp.Targets = hostFlags.Args()
 
-		subcommand = &hostReport{toolPath: *hostToolPathPtr}
-		rsp.Targets = hostFlags.Args()
+		case "query":
+			queryFlags.Var(&commits, "repo", "Repo:SHA to query")
+			queryFlags.Parse(subArgs[1:])
+			subcommand = &queryReport{}
+			rsp.Targets = queryFlags.Args()
 
-	case "query":
-		queryFlags.Var(&commits, "repo", "Repo:SHA to query")
-		queryFlags.Parse(subArgs[1:])
-		subcommand = &queryReport{}
-		rsp.Targets = queryFlags.Args()
+		case "paths":
+			pathsFlags.Var(&commits, "repo", "Repo:SHA to build")
+			singlePathPtr := pathsFlags.Bool("1", false, "Get single path to output target")
+			pathsFlags.Parse(subArgs[1:])
 
-	case "paths":
-		pathsFlags.Var(&commits, "repo", "Repo:SHA to build")
-		singlePathPtr := pathsFlags.Bool("1", false, "Get single path to output target")
-		pathsFlags.Parse(subArgs[1:])
+			subcommand = &pathsReport{build_target: defBuildTarget, single: *singlePathPtr}
 
-		subcommand = &pathsReport{build_target: defBuildTarget, single: *singlePathPtr}
+			rsp.Inputs = pathsFlags.Args()
 
-		rsp.Targets = pathsFlags.Args()
-
-	default:
-		rsp.Targets = subArgs
+		default:
+			rsp.Targets = subArgs
+		}
 	}
 	addProfileData("Init")
 	rtx.ResolveProjectMap(ctx, *manifestPtr, *upstreamPtr)
 	addProfileData("Project Map")
+
+	// Add project to output if requested
+	if *projsPtr == true {
+		rsp.Projects = make(map[string]*app.GitProject)
+		for k, p := range rtx.Info.ProjMap {
+			rsp.Projects[k] = p.GitProj
+		}
+	}
 
 	// Resolve any commits
 	if len(commits) > 0 {
@@ -226,9 +232,11 @@ func main() {
 
 	buildErrors := 0
 	if *buildPtr {
+		// Only support default builder (non server-client)
+		builder := local.NewNinjaCli(local.DefNinjaExc(), *ninjaDbPtr, ninjaTimeout, buildTimeout, false /*clientMode*/)
 		for _, t := range rsp.Targets {
 			log.Printf("Building %s\n", t)
-			res := ninja.Build(ctx, t)
+			res := builder.Build(ctx, t)
 			addProfileData(fmt.Sprintf("Build %s", t))
 			log.Printf("%s\n", res.Output)
 			if res.Success != true {
