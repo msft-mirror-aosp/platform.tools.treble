@@ -314,7 +314,7 @@ def get_ninja_inputs(ninja_binary, ninja_build_file, modules):
 def get_kati_makefiles(kati_stamp_file, overlays):
   """Returns the set of makefile paths from the kati stamp file.
 
-  Uses the ckati_stamp_dump prebuilt binary.
+  Uses the ckati prebuilt binary.
   Also includes symlink sources in the resulting set for any
   makefiles that are symlinks.
 
@@ -326,7 +326,8 @@ def get_kati_makefiles(kati_stamp_file, overlays):
   # Get a set of all makefiles that were parsed by Kati during the build.
   makefiles = set(
       subprocess.check_output([
-          "prebuilts/build-tools/linux-x86/bin/ckati_stamp_dump",
+          "prebuilts/build-tools/linux-x86/bin/ckati",
+          "--dump_stamp_tool",
           "--files",
           kati_stamp_file,
       ]).decode().strip("\n").split("\n"))
