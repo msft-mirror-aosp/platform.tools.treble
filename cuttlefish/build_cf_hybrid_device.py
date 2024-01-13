@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 
 from build_chd_utils import copy_files
+from build_chd_utils import merge_chd_sepolicy
 from build_chd_utils import unzip_otatools
 
 """Test command:
@@ -103,6 +104,14 @@ def run(temp_dir):
       merged_target_files,
       img_zip_path]
   subprocess.run(command, check=True)
+
+  # merge CHD debug sepolicy
+  # TODO (b/315474132): remove this when the CHD sepolicy issue is resolved.
+  try:
+    merge_chd_sepolicy(framework_target_files, vendor_target_files, otatools,
+                       args.output_dir)
+  except Exception as error:
+    print(f'Warning cannot generate chd_merged_sepolicy: {error}')
 
   # copy files
   copy_files(args.copy_file, args.output_dir)

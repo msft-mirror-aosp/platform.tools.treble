@@ -17,6 +17,8 @@
 import glob
 import os
 import shutil
+import subprocess
+import tempfile
 import zipfile
 
 
@@ -76,3 +78,124 @@ def copy_files(copy_files_list, output_dir):
     if os.path.exists(dst):
       raise FileExistsError(dst)
     shutil.copyfile(src, dst)
+
+
+def _extract_cil_files(target_files_zip, output_dir):
+  """Extract sepolicy cil files from a target files zip archive.
+
+  Args:
+    target_files_zip: A path to the target files zip archive.
+    output_dir: The directory of extracted cil files.
+  """
+  with zipfile.ZipFile(target_files_zip, 'r') as zf:
+    cil_files = [name for name in zf.namelist() if name.endswith('.cil')]
+    for f in cil_files:
+      zf.extract(f, output_dir)
+
+
+def _get_sepolicy_plat_version(target_files_zip):
+  """Get the platform sepolicy version from a vendor target files zip archive.
+
+  Args:
+    target_files_zip: A path to the target files zip archive.
+
+  Returns:
+    A string that represents the platform sepolicy version.
+  """
+  with zipfile.ZipFile(target_files_zip, 'r') as zf:
+    try:
+      with zf.open('VENDOR/etc/selinux/plat_sepolicy_vers.txt') as ver_file:
+        return ver_file.readline().decode('utf-8').strip('\n')
+    except Exception as error:
+      print(f'cannot get platform sepolicy version from {target_files_zip}')
+      raise
+
+
+def merge_chd_sepolicy(framework_target_files_zip, vendor_target_files_zip,
+                       otatools_dir, output_dir):
+  """Merge the sepolicy files for CHD.
+
+  This function takes both the system and vendor sepolicy files from
+  framework_target_files_zip, and merges them with the vendor sepolicy from
+  vendor_target_files_zip to generate `chd_merged_sepolicy`.
+
+  In certain instances, a device may possess components that do not put their
+  sepolicy rules within the same partition as the components themselves. This
+  results in a problem that CHD is missing necessary vendor sepolicy rules
+  after the replacement of the device's vendor image with Cuttlefish. As a
+  short term solution to resolve this issue, the vendor sepolicy files from
+  framework_target_files_zip are additionally merged.
+
+  Args:
+    framework_target_files_zip: A path to the framework target files zip
+                                archive.
+    vendor_target_files_zip: A path to the vendor target files zip archive.
+    otatools_dir: The otatools directory.
+    output_dir: The output directory for generating a merged sepolicy file.
+
+  Returns:
+    The path to the CHD merged sepolicy file.
+
+  Raises:
+    FileNotFoundError if any mandatory sepolicy file is missing.
+  """
+  with (
+      tempfile.TemporaryDirectory(prefix='framework_',
+                                  dir=output_dir) as framework_dir,
+      tempfile.TemporaryDirectory(prefix='vendor_',
+                                  dir=output_dir) as vendor_dir,
+  ):
+    merged_policy = os.path.join(output_dir, 'chd_merged_sepolicy')
+    _extract_cil_files(framework_target_files_zip, framework_dir)
+    _extract_cil_files(vendor_target_files_zip, vendor_dir)
+    plat_ver = _get_sepolicy_plat_version(vendor_target_files_zip)
+    print(f'Merging sepolicy files from {framework_target_files_zip} and '
+          f'{vendor_target_files_zip}: platform version {plat_ver}.')
+
+    # (partition, path, required)
+    system_policy_files = (
+        ('system', 'etc/selinux/plat_sepolicy.cil', True),
+        ('system', f'etc/selinux/mapping/{plat_ver}.cil', True),
+        ('system', f'etc/selinux/mapping/{plat_ver}.compat.cil', False),
+        ('system_ext', 'etc/selinux/system_ext_sepolicy.cil', False),
+        ('system_ext', f'etc/selinux/mapping/{plat_ver}.cil', False),
+        ('system_ext', f'etc/selinux/mapping/{plat_ver}.compat.cil', False),
+        ('product', 'etc/selinux/product_sepolicy.cil', False),
+        ('product', f'etc/selinux/mapping/{plat_ver}.cil', False),
+    )
+    vendor_policy_files = (
+        ('vendor', 'etc/selinux/vendor_sepolicy.cil', True),
+        ('vendor', 'etc/selinux/plat_pub_versioned.cil', True),
+        ('odm', 'etc/selinux/odm_sepolicy.cil', False),
+    )
+
+    # merge system and vendor policy files from framework_dir with vendor
+    # policy files from vendor_dir.
+    merge_cmd = [
+        os.path.join(otatools_dir, 'bin', 'secilc'),
+        '-m', '-M', 'true', '-G', '-N',
+        '-o', merged_policy,
+        '-f', '/dev/null'
+    ]
+    policy_dirs_and_files = (
+        # For the normal case, we should merge the system policies from
+        # framework_dir with the vendor policies from vendor_dir.
+        (framework_dir, system_policy_files),
+        (vendor_dir, vendor_policy_files),
+
+        # Additionally merging the vendor policies from framework_dir in order
+        # to fix the policy misplaced issue.
+        # TODO (b/315474132): remove this when all the policies from
+        #                     framework_dir are moved to the right partition.
+        (framework_dir, vendor_policy_files),
+    )
+    for policy_dir, policy_files in policy_dirs_and_files:
+      for partition, path, required in policy_files:
+        policy_file = os.path.join(policy_dir, partition.upper(), path)
+        if os.path.exists(policy_file):
+          merge_cmd.append(policy_file)
+        elif required:
+          raise FileNotFoundError(f'{policy_file} does not exist')
+
+    subprocess.run(merge_cmd, check=True)
+    return merged_policy
