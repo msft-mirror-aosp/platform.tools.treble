@@ -14,6 +14,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+import fnmatch
 import glob
 import os
 import shutil
@@ -22,15 +23,22 @@ import tempfile
 import zipfile
 
 
-def unzip_otatools(otatools_zip_path, output_dir):
+def unzip_otatools(otatools_zip_path, output_dir, patterns=None):
   """Unzip otatools to a directory and set the permissions for execution.
 
   Args:
     otatools_zip_path: The path to otatools zip archive.
     output_dir: The root directory of the unzip output.
+    patterns: If provided, only extract files matching any of these patterns
+              from the otatools zip archive; otherwise, extract all files.
   """
   with zipfile.ZipFile(otatools_zip_path, 'r') as zf:
-    zf.extractall(path=output_dir)
+    if patterns is None:
+      zf.extractall(path=output_dir)
+    else:
+      for file in zf.namelist():
+        if any(fnmatch.fnmatch(file, p) for p in patterns):
+          zf.extract(file, output_dir)
 
   for f in glob.glob(os.path.join(output_dir, 'bin', '*')):
     os.chmod(f, 0o777)
