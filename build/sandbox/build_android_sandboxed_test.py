@@ -26,6 +26,7 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
     os.chdir('/')
     commands = build_android_sandboxed.build(
         'target_name',
+        'release_target',
         'userdebug',
         nsjail_bin='/bin/true',
         chroot='/chroot',
@@ -47,7 +48,7 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
             '--bindmount', '/dist_dir:/dist',
             '--',
             '/src/tools/treble/build/sandbox/build_android_target.sh',
-            'target_name-userdebug',
+            'target_name-release_target-userdebug',
             '/src',
             'make', '-j', 'droid', 'dist',
         ]
@@ -58,6 +59,7 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
     os.chdir('/')
     commands = build_android_sandboxed.build(
         'target_name',
+        'release_target',
         'userdebug',
         nsjail_bin='/bin/true',
         command_wrapper='/command/wrapper',
@@ -80,7 +82,7 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
             '--bindmount', '/dist_dir:/dist',
             '--',
             '/command/wrapper',
-            'target_name-userdebug',
+            'target_name-release_target-userdebug',
             '/src',
             'make', '-j', 'droid', 'dist',
         ]
@@ -91,6 +93,7 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
     os.chdir('/')
     commands = build_android_sandboxed.build(
         'target_name',
+        'release_target',
         'user',
         nsjail_bin='/bin/true',
         chroot='/chroot',
@@ -112,7 +115,7 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
             '--bindmount', '/dist_dir:/dist',
             '--',
             '/src/tools/treble/build/sandbox/build_android_target.sh',
-            'target_name-user',
+            'target_name-release_target-user',
             '/src',
             'make', '-j', 'droid', 'dist',
         ]
@@ -123,6 +126,7 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
     os.chdir('/')
     commands = build_android_sandboxed.build(
         'target_name',
+        'release_target',
         'userdebug',
         nsjail_bin='/bin/true',
         chroot='/chroot',
@@ -144,7 +148,7 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
             '--bindmount', '/dist_dir:/dist',
             '--',
             '/src/tools/treble/build/sandbox/build_android_target.sh',
-            'target_name-userdebug',
+            'target_name-release_target-userdebug',
             '/src',
             'make', '-j', 'droid', 'dist',
             'extra_build_target'
@@ -167,6 +171,7 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
       os.chdir('/')
       skip_commands = build_android_sandboxed.build(
         'target_skip',
+        'release_target',
         'userdebug',
         nsjail_bin='/bin/true',
         chroot='/chroot',
@@ -182,6 +187,7 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
     os.chdir('/')
     commands = build_android_sandboxed.build(
         'target_name',
+        'release_target',
         'userdebug',
         nsjail_bin='/bin/true',
         chroot='/chroot',
@@ -206,7 +212,7 @@ class BuildAndroidSandboxedTest(unittest.TestCase):
             '--env', 'second_env_var=second_value',
             '--',
             '/src/tools/treble/build/sandbox/build_android_target.sh',
-            'target_name-userdebug',
+            'target_name-release_target-userdebug',
             '/src',
             'make', '-j', 'droid', 'dist',
         ]

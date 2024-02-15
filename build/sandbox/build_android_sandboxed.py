@@ -24,6 +24,7 @@ _DEFAULT_COMMAND_WRAPPER = \
 
 
 def build(build_target,
+          release_target,
           variant,
           nsjail_bin,
           chroot,
@@ -40,6 +41,7 @@ def build(build_target,
 
   Args:
     build_target: A string with the name of the build target.
+    release_target: The release target config, e.g., next, trunk_food, ...
     variant: A string with the build variant.
     nsjail_bin: A string with the path to the nsjail binary.
     chroot: A string with the path to the chroot of the NsJail sandbox.
@@ -73,7 +75,7 @@ def build(build_target,
   source_dir = os.getcwd()
   command = [
       command_wrapper,
-      '%s-%s' % (android_target, variant),
+      '%s-%s-%s' % (android_target, release_target, variant),
       '/src',
       'make',
       '-j',
@@ -115,6 +117,10 @@ def arg_parser():
   parser = argparse.ArgumentParser(
       description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   parser.add_argument('--build_target', help='The build target.')
+  parser.add_argument(
+      '--release_target',
+      required=True,
+      help='Release target config, e.g., next, trunk_food, trunk_staging, ...')
   parser.add_argument(
       '--variant', default='userdebug', help='The Android build variant.')
   parser.add_argument(
@@ -199,6 +205,7 @@ def main():
 
   build(
       build_target=args['build_target'],
+      release_target=args['release_target'],
       variant=args['variant'],
       nsjail_bin=args['nsjail_bin'],
       chroot=args['chroot'],
