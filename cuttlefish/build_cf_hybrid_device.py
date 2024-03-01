@@ -20,9 +20,8 @@ import os
 import subprocess
 import tempfile
 
-from build_chd_utils import copy_files
-from build_chd_utils import merge_chd_sepolicy
-from build_chd_utils import unzip_otatools
+from build_chd_debug_ramdisk import add_debug_ramdisk_files
+from build_chd_utils import copy_files, merge_chd_sepolicy, unzip_otatools
 
 """Test command:
 
@@ -107,14 +106,35 @@ def run(temp_dir):
 
   # merge CHD debug sepolicy
   # TODO (b/315474132): remove this when the CHD sepolicy issue is resolved.
+  chd_sepolicy = None
   try:
-    merge_chd_sepolicy(framework_target_files, vendor_target_files, otatools,
-                       args.output_dir)
+    chd_sepolicy = merge_chd_sepolicy(
+        framework_target_files, vendor_target_files, otatools, args.output_dir)
   except Exception as error:
-    print(f'Warning cannot generate chd_merged_sepolicy: {error}')
+    print(f'Warning - cannot generate chd_merged_sepolicy: {error}')
 
   # copy files
   copy_files(args.copy_file, args.output_dir)
+
+  # build the CHD vendor boot debug image by adding chd_sepolicy and
+  # chd_debug_prop (if present) into the Cuttlefish's vendor_boot-debug.img.
+  files_to_add = []
+  if chd_sepolicy and os.path.exists(chd_sepolicy):
+    files_to_add.append(f'{chd_sepolicy}:precompiled_sepolicy')
+  chd_debug_prop = os.path.join(args.output_dir, 'chd_debug.prop')
+  if os.path.exists(chd_debug_prop):
+    # rename the debug prop file as `adb_debug.prop` because this is the
+    # file name that property init expects.
+    files_to_add.append(f'{chd_debug_prop}:adb_debug.prop')
+
+  cf_debug_img = os.path.join(args.output_dir, 'vendor_boot-debug.img')
+  if files_to_add and os.path.exists(cf_debug_img):
+    chd_debug_img = os.path.join(args.output_dir, 'vendor_boot-chd_debug.img')
+    try:
+      add_debug_ramdisk_files(
+          cf_debug_img, files_to_add, otatools, temp_dir, chd_debug_img)
+    except Exception as error:
+      print(f'Warning - cannot build {chd_debug_img}: {error}')
 
 
 if __name__ == '__main__':
