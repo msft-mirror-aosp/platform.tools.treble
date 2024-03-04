@@ -17,18 +17,19 @@ package {
 }
 
 python_library_host {
-  name: "build_chd_lib",
-  srcs: [
-    "build_chd_utils.py",
-  ],
+    name: "build_chd_lib",
+    srcs: [
+        "build_chd_debug_ramdisk.py",
+        "build_chd_utils.py",
+    ],
 }
 
 python_binary_host {
-  name: "build_cf_hybrid_device",
-  srcs: [
-    "build_cf_hybrid_device.py",
-  ],
-  libs: [
-    "build_chd_lib",
-  ],
+    name: "build_cf_hybrid_device",
+    srcs: [
+        "build_cf_hybrid_device.py",
+    ],
+    libs: [
+        "build_chd_lib",
+    ],
 }
