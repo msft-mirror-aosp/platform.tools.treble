@@ -147,12 +147,10 @@ def merge_chd_sepolicy(framework_target_files_zip, vendor_target_files_zip,
   Raises:
     FileNotFoundError if any mandatory sepolicy file is missing.
   """
-  with (
-      tempfile.TemporaryDirectory(prefix='framework_',
-                                  dir=output_dir) as framework_dir,
-      tempfile.TemporaryDirectory(prefix='vendor_',
-                                  dir=output_dir) as vendor_dir,
-  ):
+  with tempfile.TemporaryDirectory(prefix='framework_',
+                                   dir=output_dir) as framework_dir, \
+       tempfile.TemporaryDirectory(prefix='vendor_',
+                                   dir=output_dir) as vendor_dir:
     merged_policy = os.path.join(output_dir, 'chd_merged_sepolicy')
     _extract_cil_files(framework_target_files_zip, framework_dir)
     _extract_cil_files(vendor_target_files_zip, vendor_dir)
