@@ -17,12 +17,17 @@
 
 import unittest
 import os
+import pkgutil
 import sys
 
 def run():
-  start_dir = os.path.dirname(os.path.abspath(__file__))
-  loader = unittest.TestLoader()
-  suite = loader.discover(start_dir, pattern='*_test.py')
+  test_modules = [
+    mod.name
+    for mod in pkgutil.walk_packages()
+    if mod.name.endswith('_test')
+  ]
+
+  suite = unittest.defaultTestLoader.loadTestsFromNames(test_modules)
 
   runner = unittest.TextTestRunner(verbosity=2)
   result = runner.run(suite)
