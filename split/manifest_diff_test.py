@@ -15,7 +15,7 @@
 import unittest
 import xml.etree.ElementTree as ET
 
-import manifest_diff
+from treble.split import manifest_diff
 
 
 class ManifestDiffTest(unittest.TestCase):

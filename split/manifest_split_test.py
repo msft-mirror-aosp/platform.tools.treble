@@ -22,7 +22,7 @@ import unittest
 import unittest.mock
 import xml.etree.ElementTree as ET
 
-import manifest_split
+from treble.split import manifest_split
 
 
 class ManifestSplitTest(unittest.TestCase):
