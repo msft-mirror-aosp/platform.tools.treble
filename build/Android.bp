@@ -8,15 +8,15 @@ python_defaults {
 }
 
 python_library_host {
-  name: "treble_build_lib",
-  defaults: ["treble_build_default"],
-  srcs: [
-      "sandbox/build_android_sandboxed.py",
-      "sandbox/config.py",
-      "sandbox/nsjail.py",
-      "sandbox/overlay.py",
-      "sandbox/rbe.py",
-  ],
+    name: "treble_build_lib",
+    defaults: ["treble_build_default"],
+    srcs: [
+        "sandbox/build_android_sandboxed.py",
+        "sandbox/config.py",
+        "sandbox/nsjail.py",
+        "sandbox/overlay.py",
+        "sandbox/rbe.py",
+    ],
 }
 
 python_test_host {
@@ -38,5 +38,10 @@ python_test_host {
     test_config: "test.xml",
     test_options: {
         unit_test: true,
+    },
+    version: {
+        py3: {
+            embedded_launcher: true,
+        },
     },
 }
