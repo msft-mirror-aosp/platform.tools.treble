@@ -22,7 +22,7 @@ import unittest
 import unittest.mock
 import xml.etree.ElementTree as ET
 
-import manifest_split
+from treble.split import manifest_split
 
 
 class ManifestSplitTest(unittest.TestCase):
@@ -221,7 +221,7 @@ class ManifestSplitTest(unittest.TestCase):
       # (The Kati stamp file does not resolve symlink sources.)
       makefiles.append(symlink_dest)
 
-      # Mock the output of ckati_stamp_dump:
+      # Mock the output of ckati --dump_stamp_tool:
       mock_check_output.return_value = '\n'.join(makefiles).encode()
 
       kati_makefiles = manifest_split.get_kati_makefiles(
