@@ -15,7 +15,7 @@
 import unittest
 import xml.etree.ElementTree as ET
 
-import xml_diff
+from treble.split import xml_diff
 
 
 class XmlDiffTest(unittest.TestCase):
