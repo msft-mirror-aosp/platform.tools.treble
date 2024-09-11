@@ -20,7 +20,7 @@ import os
 import subprocess
 import tempfile
 
-from build_chd_debug_ramdisk import add_debug_ramdisk_files, ImageOptions
+from build_chd_debug_ramdisk import build_chd_debug_ramdisk, ImageOptions
 from build_chd_utils import copy_files, merge_chd_sepolicy, unzip_otatools
 
 """Test command:
@@ -128,18 +128,29 @@ def run(temp_dir: str) -> None:
     files_to_add.append(f'{chd_debug_prop}:adb_debug.prop')
 
   cf_debug_img = os.path.join(args.output_dir, 'vendor_boot-debug.img')
-  if files_to_add and os.path.exists(cf_debug_img):
-    chd_debug_img = os.path.join(args.output_dir, 'vendor_boot-chd_debug.img')
-    chd_debug_img_option = ImageOptions(
-        input_image=cf_debug_img,
-        output_image=chd_debug_img,
-        otatools_dir=otatools,
-        temp_dir=temp_dir,
-        files_to_add=files_to_add)
-    try:
-      add_debug_ramdisk_files(chd_debug_img_option)
-    except Exception as error:
-      print(f'Warning - cannot build {chd_debug_img}: {error}')
+  chd_debug_image_userdebug = 'vendor_boot-chd_debug.img'
+  chd_debug_image_user = 'vendor_boot-chd_debug_user.img'
+  if os.path.exists(cf_debug_img):
+    for image_name in [chd_debug_image_userdebug, chd_debug_image_user]:
+      image_path = os.path.join(args.output_dir, image_name)
+      image_dir = os.path.join(temp_dir, image_name)
+      os.mkdir(image_dir)
+      image_option = ImageOptions(
+          input_image=cf_debug_img,
+          output_image=image_path,
+          otatools_dir=otatools,
+          temp_dir=image_dir,
+          files_to_add=files_to_add)
+
+      # Remove userdebug_plat_sepolicy.cil from CHD's debug ramdisk to build a
+      # debug ramdisk for user builds.
+      if image_name == chd_debug_image_user:
+        image_option.files_to_remove = ['userdebug_plat_sepolicy.cil']
+
+      try:
+        build_chd_debug_ramdisk(image_option)
+      except Exception as error:
+        print(f'Warning - cannot build {image_name}: {error}')
 
 
 if __name__ == '__main__':
