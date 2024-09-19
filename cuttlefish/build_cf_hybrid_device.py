@@ -20,7 +20,7 @@ import os
 import subprocess
 import tempfile
 
-from build_chd_debug_ramdisk import add_debug_ramdisk_files
+from build_chd_debug_ramdisk import add_debug_ramdisk_files, ImageOptions
 from build_chd_utils import copy_files, merge_chd_sepolicy, unzip_otatools
 
 """Test command:
@@ -36,11 +36,11 @@ python3 tools/treble/cuttlefish/build_cf_hybrid_device.py \
 """
 
 
-def _parse_args():
+def _parse_args() -> argparse.Namespace:
   """Parse the arguments for building cuttlefish hybrid devices.
 
   Returns:
-    An object of argparse.Namespace.
+    An object of the parsed arguments.
   """
   parser = argparse.ArgumentParser()
 
@@ -62,7 +62,7 @@ def _parse_args():
   return parser.parse_args()
 
 
-def run(temp_dir):
+def run(temp_dir: str) -> None:
   args = _parse_args()
 
   # unzip otatools
@@ -130,9 +130,14 @@ def run(temp_dir):
   cf_debug_img = os.path.join(args.output_dir, 'vendor_boot-debug.img')
   if files_to_add and os.path.exists(cf_debug_img):
     chd_debug_img = os.path.join(args.output_dir, 'vendor_boot-chd_debug.img')
+    chd_debug_img_option = ImageOptions(
+        input_image=cf_debug_img,
+        output_image=chd_debug_img,
+        otatools_dir=otatools,
+        temp_dir=temp_dir,
+        files_to_add=files_to_add)
     try:
-      add_debug_ramdisk_files(
-          cf_debug_img, files_to_add, otatools, temp_dir, chd_debug_img)
+      add_debug_ramdisk_files(chd_debug_img_option)
     except Exception as error:
       print(f'Warning - cannot build {chd_debug_img}: {error}')
 
