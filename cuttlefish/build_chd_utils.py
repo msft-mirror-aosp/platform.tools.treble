@@ -20,10 +20,13 @@ import os
 import shutil
 import subprocess
 import tempfile
+from typing import List, Tuple
 import zipfile
 
 
-def unzip_otatools(otatools_zip_path, output_dir, patterns=None):
+def unzip_otatools(
+    otatools_zip_path: str, output_dir: str, patterns: List[str] = None
+) -> None:
   """Unzip otatools to a directory and set the permissions for execution.
 
   Args:
@@ -44,7 +47,7 @@ def unzip_otatools(otatools_zip_path, output_dir, patterns=None):
     os.chmod(f, 0o777)
 
 
-def _parse_copy_file_pair(copy_file_pair):
+def _parse_copy_file_pair(copy_file_pair: str) -> Tuple[str, str]:
   """Convert a string to a source path and a destination path.
 
   Args:
@@ -66,7 +69,7 @@ def _parse_copy_file_pair(copy_file_pair):
   return src_list[0], split_pair[1]
 
 
-def copy_files(copy_files_list, output_dir):
+def copy_files(copy_files_list: List[str], output_dir: str) -> None:
   """Copy files to the output directory.
 
   Args:
@@ -88,7 +91,7 @@ def copy_files(copy_files_list, output_dir):
     shutil.copyfile(src, dst)
 
 
-def _extract_cil_files(target_files_zip, output_dir):
+def _extract_cil_files(target_files_zip: str, output_dir: str) -> None:
   """Extract sepolicy cil files from a target files zip archive.
 
   Args:
@@ -101,7 +104,7 @@ def _extract_cil_files(target_files_zip, output_dir):
       zf.extract(f, output_dir)
 
 
-def _get_sepolicy_plat_version(target_files_zip):
+def _get_sepolicy_plat_version(target_files_zip: str) -> str:
   """Get the platform sepolicy version from a vendor target files zip archive.
 
   Args:
@@ -119,8 +122,10 @@ def _get_sepolicy_plat_version(target_files_zip):
       raise
 
 
-def merge_chd_sepolicy(framework_target_files_zip, vendor_target_files_zip,
-                       otatools_dir, output_dir):
+def merge_chd_sepolicy(
+    framework_target_files_zip: str, vendor_target_files_zip: str,
+    otatools_dir: str, output_dir: str
+) -> str:
   """Merge the sepolicy files for CHD.
 
   This function takes both the system and vendor sepolicy files from
