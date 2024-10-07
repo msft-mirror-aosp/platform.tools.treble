@@ -20,7 +20,7 @@ import os
 import subprocess
 import tempfile
 
-from build_chd_debug_ramdisk import add_debug_ramdisk_files
+from build_chd_debug_ramdisk import build_chd_debug_ramdisk, ImageOptions
 from build_chd_utils import copy_files, merge_chd_sepolicy, unzip_otatools
 
 """Test command:
@@ -36,11 +36,11 @@ python3 tools/treble/cuttlefish/build_cf_hybrid_device.py \
 """
 
 
-def _parse_args():
+def _parse_args() -> argparse.Namespace:
   """Parse the arguments for building cuttlefish hybrid devices.
 
   Returns:
-    An object of argparse.Namespace.
+    An object of the parsed arguments.
   """
   parser = argparse.ArgumentParser()
 
@@ -62,7 +62,7 @@ def _parse_args():
   return parser.parse_args()
 
 
-def run(temp_dir):
+def run(temp_dir: str) -> None:
   args = _parse_args()
 
   # unzip otatools
@@ -128,13 +128,29 @@ def run(temp_dir):
     files_to_add.append(f'{chd_debug_prop}:adb_debug.prop')
 
   cf_debug_img = os.path.join(args.output_dir, 'vendor_boot-debug.img')
-  if files_to_add and os.path.exists(cf_debug_img):
-    chd_debug_img = os.path.join(args.output_dir, 'vendor_boot-chd_debug.img')
-    try:
-      add_debug_ramdisk_files(
-          cf_debug_img, files_to_add, otatools, temp_dir, chd_debug_img)
-    except Exception as error:
-      print(f'Warning - cannot build {chd_debug_img}: {error}')
+  chd_debug_image_userdebug = 'vendor_boot-chd_debug.img'
+  chd_debug_image_user = 'vendor_boot-chd_debug_user.img'
+  if os.path.exists(cf_debug_img):
+    for image_name in [chd_debug_image_userdebug, chd_debug_image_user]:
+      image_path = os.path.join(args.output_dir, image_name)
+      image_dir = os.path.join(temp_dir, image_name)
+      os.mkdir(image_dir)
+      image_option = ImageOptions(
+          input_image=cf_debug_img,
+          output_image=image_path,
+          otatools_dir=otatools,
+          temp_dir=image_dir,
+          files_to_add=files_to_add)
+
+      # Remove userdebug_plat_sepolicy.cil from CHD's debug ramdisk to build a
+      # debug ramdisk for user builds.
+      if image_name == chd_debug_image_user:
+        image_option.files_to_remove = ['userdebug_plat_sepolicy.cil']
+
+      try:
+        build_chd_debug_ramdisk(image_option)
+      except Exception as error:
+        print(f'Warning - cannot build {image_name}: {error}')
 
 
 if __name__ == '__main__':
