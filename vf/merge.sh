@@ -5,7 +5,7 @@
 
 set -e
 
-while getopts ":t:d:v:b:m:r:" option ; do
+while getopts ":t:d:v:b:m:r:s:p:" option ; do
   case "${option}" in
     t) TARGET=${OPTARG} ;;
     d) DIST_DIR=${OPTARG} ;;
@@ -13,6 +13,8 @@ while getopts ":t:d:v:b:m:r:" option ; do
     b) BUILD_ID=${OPTARG} ;;
     m) MERGE_CONFIG_DIR=${OPTARG} ;;
     r) HAS_RADIO_IMG=${OPTARG} ;;
+    s) TRUNK_STAGING=${OPTARG} ;;
+    p) SUPER_IMG=${OPTARG} ;;
     *) echo "Unexpected argument: -${OPTARG}" >&2 ;;
   esac
 done
@@ -36,6 +38,14 @@ fi
 if [[ -z "${HAS_RADIO_IMG}" ]]; then
   HAS_RADIO_IMG="true"
 fi
+if [[ -z "${TRUNK_STAGING}" ]]; then
+  TARGET_RELEASE="${TARGET}"
+else
+  TARGET_RELEASE="${TARGET}-${TRUNK_STAGING}"
+fi
+if [[ -n "${SUPER_IMG}" ]]; then
+  BUILD_SUPER_IMG="true"
+fi
 
 # Move the system-only build artifacts to a separate folder
 # so that the flashing tools use the merged files instead.
@@ -45,7 +55,8 @@ mv -f ${DIST_DIR}/android-info.txt ${SYSTEM_DIR}
 mv -f ${DIST_DIR}/${TARGET}-*.zip ${SYSTEM_DIR}
 
 source build/envsetup.sh
-lunch ${TARGET}-userdebug
+lunch ${TARGET_RELEASE}-userdebug
+
 
 EXTRA_FLAGS=""
 if [[ "${MERGE_CONFIG_DIR}" ]]; then
@@ -53,6 +64,7 @@ if [[ "${MERGE_CONFIG_DIR}" ]]; then
   --framework-misc-info-keys ${MERGE_CONFIG_DIR}/framework_misc_info_keys.txt \
   --vendor-item-list ${MERGE_CONFIG_DIR}/vendor_item_list.txt"
 fi
+
 out/host/linux-x86/bin/merge_target_files \
   --framework-target-files ${SYSTEM_DIR}/${TARGET}-target_files*.zip \
   --vendor-target-files ${VENDOR_DIR}/*-target_files-*.zip \
@@ -72,6 +84,14 @@ fi
 # Copy vendor otatools.zip, needed by sign_target_files_apks
 if [[ -f "${VENDOR_DIR}/otatools.zip" ]]; then
   cp ${VENDOR_DIR}/otatools.zip ${DIST_DIR}/otatools_vendor.zip
+fi
+
+#Build super image if required
+if [[ $BUILD_SUPER_IMG = "true" ]]; then
+  out/host/linux-x86/bin/build_super_image \
+  ${DIST_DIR}/${TARGET}-target_files-${BUILD_ID}.zip \
+  ${DIST_DIR}/super.img
+  unzip -j -o -d ${DIST_DIR} ${DIST_DIR}/${TARGET}-img-${BUILD_ID}.zip
 fi
 
 unzip -j -d ${DIST_DIR} \
