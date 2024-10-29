@@ -94,6 +94,6 @@ if [[ $BUILD_SUPER_IMG = "true" ]]; then
   unzip -j -o -d ${DIST_DIR} ${DIST_DIR}/${TARGET}-img-${BUILD_ID}.zip
 fi
 
-unzip -j -d ${DIST_DIR} \
+unzip -j -o -d ${DIST_DIR} \
   ${VENDOR_DIR}/*-target_files-*.zip \
   OTA/android-info.txt
