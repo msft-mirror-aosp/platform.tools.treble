@@ -202,22 +202,31 @@ class BootImage:
     Args:
       file_name: path of the file to be removed, relative to the ramdisk root
         directory.
+
+    Raises:
+      FileNotFoundError if `file_name` cannot be found in any of the ramdisk
+        fragments.
     """
     ramdisk_fragments = self._get_ramdisk_fragments()
+    is_removed = False
     for ramdisk in ramdisk_fragments:
-      print(f'Removing {file_name} from {ramdisk}')
+      print(f'Attempting to remove {file_name} from {ramdisk}')
       with tempfile.TemporaryDirectory() as temp_dir:
         uncompressed_ramdisk = self._decompress_ramdisk(ramdisk, temp_dir)
         extracted_ramdisk_dir = os.path.join(temp_dir, 'extracted_ramdisk')
         os.mkdir(extracted_ramdisk_dir)
         self._extract_ramdisk(uncompressed_ramdisk, extracted_ramdisk_dir)
-
         file_path = os.path.join(extracted_ramdisk_dir, file_name)
-        if not os.path.exists(file_path):
-          raise FileNotFoundError(f'Cannot Remove {file_name} from {ramdisk}')
-        os.remove(file_path)
-
+        if os.path.exists(file_path):
+          os.remove(file_path)
+          is_removed = True
+          print(f'{file_path} was removed')
         self._compress_ramdisk(extracted_ramdisk_dir, ramdisk)
+
+    if not is_removed:
+      raise FileNotFoundError(
+          f'cannot remove {file_name} from {ramdisk_fragments}'
+      )
 
   def pack(self, output_img: str) -> None:
     """Pack the boot.img using `self.bootimg_args`.
@@ -268,8 +277,9 @@ def build_chd_debug_ramdisk(options: ImageOptions) -> None:
 
   Raises:
     FileExistsError if having duplicated ramdisk fragments.
-    FileNotFoundError if any required otatool does not exist or if the
-      userdebug sepolicy is not present at `input_image`.
+    FileNotFoundError if any required otatool does not exist or if
+      `options.files_to_remove` is not present in any of the ramdisk fragments
+      of `input_image`.
   """
   unpack_bootimg, mkbootfs, mkbootimg, lz4, toybox = _prepare_env(
       options.otatools_dir)
