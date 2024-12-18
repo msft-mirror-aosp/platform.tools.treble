@@ -40,6 +40,7 @@ def main():
       os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../..'))
   env = rbe.env_array_to_dict(rbe.prepare_env(env))
   env['PATH'] = os.getenv('PATH')
+  env['HOME'] = os.getenv('HOME')
   for d in ['FLAG_log_dir', 'RBE_output_dir', 'RBE_proxy_log_dir']:
     env[d] = '/tmp'  # We want the logs in /tmp instead of out.
   try:
