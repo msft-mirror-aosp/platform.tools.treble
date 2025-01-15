@@ -5,9 +5,6 @@ package {
 python_defaults {
     name: "treble_split_default",
     pkg_path: "treble/split",
-    libs: [
-        "py-setuptools",
-    ],
 }
 
 python_binary_host {
