@@ -44,7 +44,7 @@ def _parse_args() -> argparse.Namespace:
   """
   parser = argparse.ArgumentParser()
 
-  parser.add_argument('--build_id', required=True,
+  parser.add_argument('--build_id', default='',
                       help='Build id.')
   parser.add_argument('--target', required=True,
                       help='Target name of the cuttlefish hybrid build.')
@@ -82,9 +82,10 @@ def run(temp_dir: str) -> None:
   # merge target files
   framework_target_files = matched_framework_target_files[0]
   vendor_target_files = matched_vendor_target_files[0]
+  build_id_str = f'-{args.build_id}' if args.build_id else ''
   merged_target_files = os.path.join(
       args.output_dir,
-      f'{args.target}-target_files-{args.build_id}.zip')
+      f'{args.target}-target_files{build_id_str}.zip')
   command = [
       os.path.join(otatools, 'bin', 'merge_target_files'),
       '--path', otatools,
@@ -97,7 +98,7 @@ def run(temp_dir: str) -> None:
 
   # create images from the merged target files
   img_zip_path = os.path.join(args.output_dir,
-                              f'{args.target}-img-{args.build_id}.zip')
+                              f'{args.target}-img{build_id_str}.zip')
   command = [
       os.path.join(otatools, 'bin', 'img_from_target_files'),
       merged_target_files,
